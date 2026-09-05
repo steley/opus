@@ -28,3 +28,7 @@ persist = true
 enabled = true
 head_sampling_rate = 1
 persist = true
+
+# Turnstile
+[vars]
+TURNSTILE_SITE_KEY = "0x4AAAAAACVoBh6na3LzjEoD"
