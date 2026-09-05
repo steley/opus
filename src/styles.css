@@ -387,7 +387,11 @@ html, body {
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 12vh 16px 16px;
+  /* 顶部留白用小，避免占屏浪费；content-box 让内容高度也可滚动 */
+  padding: 24px 16px 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dialog {
@@ -397,6 +401,11 @@ html, body {
   border-radius: 14px;
   box-shadow: var(--shadow);
   padding: 20px;
+  /* 弹窗自身可滚动：表单较长(mobile) 或系统键盘挤出键盘时，仍能滚到“确认”按钮，避免按钮被遮挡 */
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .dialog h3 { margin: 0 0 14px; font-size: 16px; }

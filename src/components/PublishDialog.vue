@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n.js'
-import { copyText, getConfig, getChallenge } from '../api.js'
+import { copyText, getConfig } from '../api.js'
 
 /**
  * 发布确认框：
@@ -32,12 +32,23 @@ let tsWidgetId = null
 const tsResolve = ref(null)
 const tsReject = ref(null)
 
-// 算术挑战（未配置 Turnstile 时的轻量反滥用，国内网络可用）
-const challenge = ref(null)
-const chalAnswer = ref('')
 const tsBusy = ref(false)
 
+// 移动端触屏/键盘遮挡缓解：弹窗内任一输入框获得焦点时，把该栏滚进 dialog 可视范围，
+// 避免系统键盘把正在输入的栏(或确认按钮)盖在屏幕外。dialog 与 .overlay 均已可滚动。
+const onDialogFocus = e => {
+  const t = e.target
+  if (!t || !(t instanceof Element)) return
+  if (!t.closest('.dialog')) return
+  const el = t.closest('input, select, textarea')
+  if (!el) return
+  requestAnimationFrame(() => {
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }) } catch { /* 忽略 */ }
+  })
+}
+
 onMounted(async () => {
+  document.addEventListener('focusin', onDialogFocus)
   try {
     const cfg = await getConfig()
     tsSiteKey.value = cfg.turnstileSiteKey ?? null
@@ -65,13 +76,11 @@ onMounted(async () => {
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
       })
     } catch { /* 脚本加载失败时提交会被服务端 403，错误会显示 */ }
-  } else {
-    // 算术挑战模式：无外部依赖，国内网络可用
-    try { challenge.value = await getChallenge() } catch { challenge.value = null }
   }
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('focusin', onDialogFocus)
   try { if (tsWidgetId !== null) window.turnstile.remove(tsWidgetId) } catch { /* 忽略 */ }
 })
 

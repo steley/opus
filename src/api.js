@@ -19,11 +19,6 @@ export function getConfig() {
   return request('/api/config')
 }
 
-/** 反滥用算术挑战（未启用 Turnstile 时的轻量验证） */
-export function getChallenge() {
-  return request('/api/challenge')
-}
-
 export function createPost(payload) {
   return request('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
 }
