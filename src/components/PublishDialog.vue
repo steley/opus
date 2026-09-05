@@ -55,7 +55,8 @@ onMounted(async () => {
   } catch { /* 配置读取失败视为未启用 */ }
 
   if (tsSiteKey.value) {
-    // Turnstile 模式：点「确认」时才现场执行挑战，token 保证新鲜（有效期仅 5 分钟）
+    // Turnstile 托管模式：打开发布框即由 CF 后台 challenge，自动/低风险直接产出 token。
+    // 避免“点确认才现场 execute + 交互 widget + 二次确认”——发布只需一次确认。
     try {
       if (!window.turnstile) {
         await new Promise((resolve, reject) => {
@@ -66,13 +67,12 @@ onMounted(async () => {
           document.head.appendChild(s)
         })
       }
+      // 默认托管渲染（无 execution）：CF 自动执行判定并回调 token；已判定无需交互则无感。
       tsWidgetId = window.turnstile.render(tsEl.value, {
         sitekey: tsSiteKey.value,
-        execution: 'execute',
-        appearance: 'interaction-only', // 自动通过时完全无感，需要交互才显示
         callback: token => { tsToken.value = token; tsResolve.value?.(token) },
         'error-callback': () => tsReject.value?.(new Error('ts-error')),
-        'expired-callback': () => tsReject.value?.(new Error('ts-expired')),
+        'expired-callback': () => { tsToken.value = ''; tsReject.value?.(new Error('ts-expired')) },
         theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
       })
     } catch { /* 脚本加载失败时提交会被服务端 403，错误会显示 */ }
@@ -107,9 +107,9 @@ const valid = computed(() => {
 async function confirm() {
   if (!valid.value || props.loading || tsBusy.value) return
 
-  let turnstileToken = ''
-  if (tsSiteKey.value) {
-    // 现场执行人机验证：token 保证新鲜（有效期仅 5 分钟）
+  let turnstileToken = tsToken.value // 托管模式打开弹窗即已产出 token（快）
+  if (tsSiteKey.value && !turnstileToken) {
+    // 兜底：托管未及时返回/已过期，此处才现场 execute（正常情况不会走到）
     tsBusy.value = true
     try {
       turnstileToken = await new Promise((resolve, reject) => {
