@@ -52,6 +52,7 @@ export function createApp(db, registerStatic = null, env = {}) {
   if (db.kind !== 'd1') app.use('*', compress())
 
   // 安全响应头（after-next 写入，对所有响应生效）
+  // 注意：Workers 模式下静态资产绕过本中间件，安全头由 public/_headers 提供——两处需保持一致
   app.use('*', async (c, next) => {
     await next()
     c.res.headers.set('X-Content-Type-Options', 'nosniff')
@@ -227,12 +228,28 @@ export function createApp(db, registerStatic = null, env = {}) {
   app.post('/:id', articlePwSubmit)
   // 旧地址兼容：/p/:id 永久重定向到规范地址
   app.get('/p/:id', c => c.redirect(`/${c.req.param('id')}`, 301))
-  app.post('/p/:id', articlePwSubmit)
+  app.post('/p/:id', rateLimit({ windowMs: 60_000, max: 30 }), articlePwSubmit)
 
   return app
 }
 
 // ---------- 辅助 ----------
+
+/** Cloudflare Turnstile 服务端校验 */
+async function verifyTurnstile(secret, token, ip) {
+  if (!token) return false
+  try {
+    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ secret, response: token, ...(ip ? { remoteip: ip } : {}) }),
+    })
+    const data = await res.json()
+    return data.success === true
+  } catch {
+    return false
+  }
+}
 
 function htmlRes(c, html, status = 200) {
   c.header('Vary', 'Accept-Language, Cookie')
@@ -270,7 +287,12 @@ function postBody(post) {
 
 /** 成功读取：阅后即焚的文章在成功取出的同时销毁 */
 async function readSuccess(c, db, post) {
-  if (post.burn_after_read) await db.run('DELETE FROM posts WHERE id = ?', post.id)
+  // 阅后即焚：原子焚毁（DELETE...RETURNING，并发请求只有一个能读到内容）
+  if (post.burn_after_read) {
+    const rows = await db.all('DELETE FROM posts WHERE id = ? AND burn_after_read = 1 RETURNING *', post.id)
+    if (!rows.length) return c.json({ ok: false, error: 'not found' }, 404)
+    post = rows[0]
+  }
   return c.json({ ok: true, ...postBody(post) })
 }
 

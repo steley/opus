@@ -6,10 +6,17 @@ const EDIT_PW_MIN = 8
 const ID_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ' // 去掉易混淆的 0O1lI
 
 export function genId(len = 8) {
-  const bytes = new Uint8Array(len)
-  crypto.getRandomValues(bytes)
+  const alphabet = ID_ALPHABET
+  const max = 256 - (256 % alphabet.length) // 拒绝采样上限，消除取模偏差
   let out = ''
-  for (const b of bytes) out += ID_ALPHABET[b % ID_ALPHABET.length]
+  while (out.length < len) {
+    const bytes = new Uint8Array(len * 2)
+    crypto.getRandomValues(bytes)
+    for (const b of bytes) {
+      if (b < max) out += alphabet[b % alphabet.length]
+      if (out.length === len) return out
+    }
+  }
   return out
 }
 

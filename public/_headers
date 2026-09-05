@@ -1,3 +1,4 @@
+# 安全头：与 server/routes.js 的全局中间件保持一致（Workers 静态资产绕过 Worker，由此文件提供）
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
