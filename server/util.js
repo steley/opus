@@ -56,7 +56,7 @@ function hexBytes(hex) {
   return new Uint8Array(hex.match(/.{2}/g).map(h => parseInt(h, 16)))
 }
 
-export function timingSafeEqual(a, b) {
+function timingSafeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false
   let diff = 0
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
@@ -64,7 +64,7 @@ export function timingSafeEqual(a, b) {
 }
 
 /** 口令规则：任意可见字符（大小写字母/数字/特殊字符），仅限最小长度 */
-export function checkPassword(pw, minLen) {
+function checkPassword(pw, minLen) {
   return typeof pw === 'string' && pw.length >= minLen
 }
 

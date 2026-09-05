@@ -8,7 +8,7 @@
     "dev:server": "node --watch server/index.js",
     "build": "vite build",
     "start": "node server/index.js",
-    "deploy:d1:init": "wrangler d1 execute write --remote --file schema.sql",
+    "deploy:d1:init": "wrangler d1 execute opus --remote --file schema.sql",
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {

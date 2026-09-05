@@ -223,10 +223,9 @@ jobs:
 │   ├── sanitize.js         # 服务端 HTML 净化（安全边界）
 │   ├── pages.js            # 阅读页 / 密码页 / 404 模板
 │   ├── util.js             # 短 ID / PBKDF2 / 校验 / 转义
-│   ├── db-sqlite.js        # SQLite 适配器（node:sqlite，仅 VPS 图）
+│   ├── db-sqlite.js        # SQLite 适配器（node:sqlite，仅 VPS 用）
 │   └── index.js            # VPS 入口（静态托管 + 压缩 + 缓存头）
 ├── worker/index.js         # Cloudflare Workers 入口（D1 + Assets）
-├── scripts/backdate.mjs    # 测试辅助：手动将文章置为过期
 ├── schema.sql              # D1 建表脚本
 └── wrangler.toml           # Workers 部署配置
 ```
