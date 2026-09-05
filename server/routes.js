@@ -67,27 +67,9 @@ export function createApp(db, registerStatic = null, env = {}) {
     return c.json({ ok: false, error: 'internal error' }, 500)
   })
 
-  // ---------- SEO：robots.txt / sitemap.xml（仅收录公开文章） ----------
   app.get('/about', c => htmlRes(c, aboutPage(pageLang(c))))
   app.get('/terms', c => htmlRes(c, termsPage(pageLang(c))))
   app.get('/privacy', c => htmlRes(c, privacyPage(pageLang(c))))
-
-  app.get('/robots.txt', c => {
-    const o = origin(c)
-    return c.body(
-      `User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: ${o}/sitemap.xml\n`,
-      200,
-      { 'content-type': 'text/plain; charset=utf-8' }
-    )
-  })
-
-  app.get('/sitemap.xml', c => {
-    const o = origin(c)
-    const paths = ['/', '/about', '/terms', '/privacy']
-    const urls = paths.map(p => `  <url><loc>${o}${p}</loc></url>`).join('\n')
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urls}\n</urlset>`
-    return c.body(xml, 200, { 'content-type': 'application/xml; charset=utf-8' })
-  })
 
   app.get('/api/health', c => c.json({ ok: true, db: db.kind }))
 
