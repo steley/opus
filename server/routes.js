@@ -258,7 +258,9 @@ async function verifyTurnstile(secret, token, ip) {
     const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ secret, response: token, ...(ip ? { remoteip: ip } : {}) }),
+      // 不传 remoteip：自定义域名经 CF 反代时 x-forwarded-for 首段未必是可靠公网 IP，
+      // 传错反而会让 siteverify 失败。Turnstile 官方不要求该参数（仅绑定来访 IP 用）。
+      body: new URLSearchParams({ secret, response: token }),
     })
     const data = await res.json()
     return data.success === true
