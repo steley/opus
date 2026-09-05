@@ -14,6 +14,11 @@ async function request(url, options = {}) {
   return data
 }
 
+/** 公开配置（人机验证站点密钥等） */
+export function getConfig() {
+  return request('/api/config')
+}
+
 export function createPost(payload) {
   return request('/api/posts', { method: 'POST', body: JSON.stringify(payload) })
 }

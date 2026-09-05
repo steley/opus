@@ -45,7 +45,7 @@ async function purgeIfExpired(db, post) {
   return false
 }
 
-export function createApp(db, registerStatic = null) {
+export function createApp(db, registerStatic = null, env = {}) {
   const app = new Hono()
 
   // 压缩：Node 运行时启用；Workers 边缘自带压缩，跳过避免双重处理
@@ -91,10 +91,26 @@ export function createApp(db, registerStatic = null) {
 
   app.get('/api/health', c => c.json({ ok: true, db: db.kind }))
 
+  // ---------- 公开配置（前端读取人机验证站点密钥；两者都配置才启用） ----------
+  app.get('/api/config', c => c.json({
+    ok: true,
+    turnstileSiteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null,
+  }))
+
   // ---------- 发布 ----------
   app.post('/api/posts', rateLimit({ windowMs: 10 * 60_000, max: 20 }), async c => {
     const body = await c.req.json().catch(() => null)
     if (!body) return c.json({ ok: false, error: 'invalid body' }, 400)
+
+    // 人机验证：配置了 Turnstile 密钥后，所有发布必须携带有效 token（脚本/爬虫无法通过）
+    if (env.TURNSTILE_SECRET_KEY) {
+      const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+      const ok = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, String(body.turnstileToken ?? ''), ip)
+      if (!ok) {
+        await sleep(300)
+        return c.json({ ok: false, error: 'turnstile failed' }, 403)
+      }
+    }
 
     const check = validatePublish(body)
     if (check.error) return c.json({ ok: false, error: check.error }, 400)
@@ -280,6 +296,11 @@ async function burnAndServe(c, db, post, lang = 'zh') {
   if (post.burn_after_read) await db.run('DELETE FROM posts WHERE id = ?', post.id)
   c.header('Vary', 'Accept-Language, Cookie')
   return c.html(articlePage(post, lang, origin(c)))
+}
+
+/** 定期清理：物理删除已过期文章（Workers Cron / VPS 启动时调用） */
+export async function purgeExpiredPosts(db) {
+  await db.run('DELETE FROM posts WHERE expires_at IS NOT NULL AND expires_at <= ?', Date.now())
 }
 
 function sleep(ms) {

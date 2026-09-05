@@ -2,6 +2,7 @@
  * VPS / 自托管入口：Node + 内置 SQLite（node:sqlite）+ 静态托管 dist/。
  * 运行：npm run build && npm run start   （默认 http://localhost:8787）
  * 数据库文件路径用环境变量 WRITE_DB 指定，默认 ./opus.db
+ * 可选环境变量：TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY（发布人机验证）
  */
 import { readFileSync } from 'node:fs'
 import { serve } from '@hono/node-server'
@@ -10,8 +11,12 @@ import { createApp } from './routes.js'
 import { createSqliteDb } from './db-sqlite.js'
 
 const dbPath = process.env.WRITE_DB || './opus.db'
+const db = createSqliteDb(dbPath)
 
-const app = createApp(createSqliteDb(dbPath), app => {
+// 启动时清理一次过期文章（惰性删除之外的兜底；定期清理可配 systemd timer）
+await db.run('DELETE FROM posts WHERE expires_at IS NOT NULL AND expires_at <= ?', Date.now())
+
+const app = createApp(db, app => {
   // 编辑模式路由：返回前端壳并对爬虫声明 noindex
   app.get('/edit/:id', c => {
     c.header('X-Robots-Tag', 'noindex')
@@ -27,7 +32,7 @@ const app = createApp(createSqliteDb(dbPath), app => {
 
   // 前端静态资源（找不到文件会 next()，落到 API/阅读页路由）
   app.use('*', serveStatic({ root: './dist' }))
-})
+}, process.env)
 
 // 404 兜底必须最后注册（否则会抢占 /:id 等路由）
 app.get('*', c => c.text('Not Found', 404))

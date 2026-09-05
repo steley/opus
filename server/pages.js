@@ -252,7 +252,7 @@ export function notFoundPage(lang = 'zh') {
 <a class="home-link" href="/">← ${m.backHome}</a>
 </div>
 </main>`
-  return pageShell('404', body)
+  return pageShell('404', body, { lang })
 }
 
 // ---------- 静态文档页（关于 / 服务条款 / 隐私政策） ----------
@@ -268,7 +268,7 @@ const DOCS = {
         ['什么是 Opus', ['Opus（opus.cc）是一个极简的匿名写作与发布平台：无需注册，打开即写，落笔即发布。生成的每篇文章都有独立短链，可分享到任何地方。']],
         ['特性', ['免注册、免登录的匿名发布', '查看密码与阅后即焚，敏感内容可控', '有效期自动删除（1 小时至 365 天）', '管理密码保护下的编辑与删除', '富文本编辑器：标题、列表、代码块、图片与视频', '日间 / 夜间双主题，移动端适配']],
         ['名字的由来', ['Opus，拉丁语意为"作品"。我们相信每一篇文章都值得被认真对待——写下，即是作品。']],
-        ['反馈', ['如对内容或服务有任何问题，欢迎通过站点管理员公布的渠道反馈。']],
+        ['反馈', ['如对内容或服务有任何问题，欢迎写信至 hello@opus.cc。']],
       ],
     },
     terms: {
@@ -280,6 +280,7 @@ const DOCS = {
         ['服务的提供与变更', ['本服务按"现状"提供，不保证服务不间断、无错误或绝对安全。我们保留随时修改、暂停或终止全部或部分服务的权利。']],
         ['责任限制', ['在适用法律允许的最大范围内，Opus 对因使用或无法使用本服务而产生的任何直接、间接、附带或后果性损失不承担责任。']],
         ['条款变更', ['本条款可能不时更新，更新后将在本页公布。更新后继续使用本服务即视为接受变更后的条款。']],
+        ['联系', ['如对本条款有疑问，请联系 hello@opus.cc。']],
       ],
     },
     privacy: {
@@ -292,6 +293,7 @@ const DOCS = {
         ['第三方', ['本站不含广告、统计分析和第三方追踪 Cookie。文章中的外部媒体（图片/视频）由相应第三方域名提供，其行为受各自政策约束。']],
         ['数据的删除', ['阅后即焚：首次成功阅读后立即销毁；有效期：到期后首次被访问时物理删除；手动删除：可随时使用管理密码删除文章。删除即从数据库中移除，不可恢复。']],
         ['政策更新', ['本政策可能不时更新，更新后将在本页公布。']],
+        ['联系', ['如对本政策有疑问，请联系 hello@opus.cc。']],
       ],
     },
   },
@@ -304,7 +306,7 @@ const DOCS = {
         ['What is Opus', ['Opus (opus.cc) is a minimal anonymous publishing platform: no sign-up, open the page and write, publish with one click. Every article gets its own short link, shareable anywhere.']],
         ['Features', ['Anonymous publishing without registration', 'View password & burn-after-reading for sensitive content', 'Auto-expiry (1 hour to 365 days)', 'Edit & delete protected by the manage password', 'Rich editor: headings, lists, code blocks, images and video', 'Light / dark themes, mobile friendly']],
         ['Why the name', ['Opus is Latin for "a work". We believe every article deserves to be treated as one — once written, it is a work.']],
-        ['Feedback', ['For any questions about content or the service, reach out through the contact channel published by the site administrator.']],
+        ['Feedback', ['For any questions about content or the service, write to hello@opus.cc.']],
       ],
     },
     terms: {
@@ -316,6 +318,7 @@ const DOCS = {
         ['Service Availability', ['The service is provided "as is", without guarantees of uninterrupted or error-free operation. We may modify, suspend or discontinue all or part of the service at any time.']],
         ['Limitation of Liability', ['To the maximum extent permitted by law, Opus shall not be liable for any direct, indirect, incidental or consequential damages arising from the use of, or inability to use, the service.']],
         ['Changes', ['These terms may be updated from time to time. Continued use after an update constitutes acceptance of the revised terms.']],
+        ['Contact', ['Questions about these terms: hello@opus.cc.']],
       ],
     },
     privacy: {
@@ -328,6 +331,7 @@ const DOCS = {
         ['Third parties', ['No ads, no analytics, no third-party tracking cookies. External media embedded in articles (images/video) is served by those third-party domains under their own policies.']],
         ['Data deletion', ['Burn after reading: destroyed right after the first successful read. Expiry: physically deleted on first access past the deadline. Manual: delete anytime with the manage password. Deletion removes the row from the database permanently.']],
         ['Changes', ['This policy may be updated from time to time; updates are published on this page.']],
+        ['Contact', ['Questions about this policy: hello@opus.cc.']],
       ],
     },
   }
@@ -346,6 +350,7 @@ function docPage(lang, doc) {
 </div>
 <p class="expiry">${escapeHtml(DOCS[lang]?.updated ?? DOCS.zh.updated)}</p>
 ${sections}
+<p class="contact">📮 <a href="mailto:hello@opus.cc">hello@opus.cc</a></p>
 </main>`
   return pageShell(doc.title, body, { lang })
 }

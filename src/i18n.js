@@ -214,6 +214,20 @@ const API_ERRORS = {
     'invalid body': '请求无效',
     'id space exhausted': '链接 ID 空间暂时不可用，请重试',
     'internal error': '服务器内部错误',
+    'turnstile failed': '人机验证未通过，请刷新后重试',
+  },
+  en: {
+    'empty content': 'Content is empty',
+    'content too large': 'Content is too large',
+    'view password too short': 'View password must be at least 4 characters',
+    'manage password too short': 'Manage password must be at least 8 characters',
+    'too many requests': 'Too many requests, please try again later',
+    'not found': 'Article not found or deleted',
+    'wrong password': 'Wrong password',
+    'invalid body': 'Invalid request body',
+    'id space exhausted': 'Link ID space temporarily unavailable, please retry',
+    'internal error': 'Internal server error',
+    'turnstile failed': 'Turnstile verification failed, please retry',
   },
 }
 
