@@ -1,0 +1,30 @@
+name = "opus"
+main = "worker/index.js"
+routes = [
+  { pattern = "opus.cc", custom_domain = true }
+]
+compatibility_date = "2026-01-01"
+
+# 前端静态资源（vite build 产物），未命中 Worker 路由的请求自动回落到静态文件
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "opus"
+database_id = "45cb75b1-103d-48d3-aa19-d9e353ace0f7"
+
+[triggers]
+crons = ["17 3 * * *"]
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[observability.traces]
+enabled = true
+head_sampling_rate = 1
+persist = true
