@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n.js'
-import { copyText, getConfig } from '../api.js'
+import { copyText, getConfig, getChallenge } from '../api.js'
 
 /**
  * 发布确认框：
@@ -29,31 +29,46 @@ const tsSiteKey = ref(null)
 const tsToken = ref('')
 const tsEl = ref(null)
 let tsWidgetId = null
+const tsResolve = ref(null)
+const tsReject = ref(null)
+
+// 算术挑战（未配置 Turnstile 时的轻量反滥用，国内网络可用）
+const challenge = ref(null)
+const chalAnswer = ref('')
+const tsBusy = ref(false)
 
 onMounted(async () => {
   try {
-    const cfg = await fetch('/api/config').then(r => r.json())
+    const cfg = await getConfig()
     tsSiteKey.value = cfg.turnstileSiteKey ?? null
   } catch { /* 配置读取失败视为未启用 */ }
-  if (!tsSiteKey.value) return
-  try {
-    if (!window.turnstile) {
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script')
-        s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-        s.onload = resolve
-        s.onerror = reject
-        document.head.appendChild(s)
+
+  if (tsSiteKey.value) {
+    // Turnstile 模式：点「确认」时才现场执行挑战，token 保证新鲜（有效期仅 5 分钟）
+    try {
+      if (!window.turnstile) {
+        await new Promise((resolve, reject) => {
+          const s = document.createElement('script')
+          s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
+          s.onload = resolve
+          s.onerror = reject
+          document.head.appendChild(s)
+        })
+      }
+      tsWidgetId = window.turnstile.render(tsEl.value, {
+        sitekey: tsSiteKey.value,
+        execution: 'execute',
+        appearance: 'interaction-only', // 自动通过时完全无感，需要交互才显示
+        callback: token => { tsToken.value = token; tsResolve.value?.(token) },
+        'error-callback': () => tsReject.value?.(new Error('ts-error')),
+        'expired-callback': () => tsReject.value?.(new Error('ts-expired')),
+        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
       })
-    }
-    tsWidgetId = window.turnstile.render(tsEl.value, {
-      sitekey: tsSiteKey.value,
-      callback: token => (tsToken.value = token),
-      'error-callback': () => (tsToken.value = ''),
-      'expired-callback': () => (tsToken.value = ''),
-      theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-    })
-  } catch { /* 加载失败时服务端校验仍会把关 */ }
+    } catch { /* 脚本加载失败时提交会被服务端 403，错误会显示 */ }
+  } else {
+    // 算术挑战模式：无外部依赖，国内网络可用
+    try { challenge.value = await getChallenge() } catch { challenge.value = null }
+  }
 })
 
 onBeforeUnmount(() => {
@@ -73,21 +88,42 @@ const fieldError = computed(() => {
   return ''
 })
 
-const valid = computed(() =>
-  managePw.value.length >= 8 &&
-  (viewPw.value.length === 0 || viewPw.value.length >= 4) &&
-  managePw.value === managePw2.value &&
-  (!tsSiteKey.value || !!tsToken.value)
-)
+const valid = computed(() => {
+  if (managePw.value.length < 8) return false
+  if (viewPw.value.length > 0 && viewPw.value.length < 4) return false
+  if (managePw.value !== managePw2.value) return false
+  return true
+})
 
-function confirm() {
-  if (!valid.value || props.loading) return
+async function confirm() {
+  if (!valid.value || props.loading || tsBusy.value) return
+
+  let turnstileToken = ''
+  if (tsSiteKey.value) {
+    // 现场执行人机验证：token 保证新鲜（有效期仅 5 分钟）
+    tsBusy.value = true
+    try {
+      turnstileToken = await new Promise((resolve, reject) => {
+        tsResolve.value = resolve
+        tsReject.value = reject
+        window.turnstile.reset(tsWidgetId)
+        window.turnstile.execute(tsWidgetId)
+        setTimeout(() => reject(new Error('ts-timeout')), 20_000)
+      })
+    } catch {
+      tsBusy.value = false
+      return
+    } finally {
+      tsBusy.value = false
+    }
+  }
+
   emit('confirm', {
     burnAfterRead: burn.value,
     expiry: expiry.value,
     viewPassword: viewPw.value,
     managePassword: managePw.value,
-    turnstileToken: tsToken.value,
+    turnstileToken,
   })
 }
 
@@ -147,6 +183,9 @@ function fmtDate(ms) {
         <label class="field-label">{{ t('managePasswordAgain') }}</label>
         <input v-model="managePw2" type="password" class="pw-input" :placeholder="t('pwEditPh')"
           autocomplete="new-password" spellcheck="false" />
+
+        <!-- Turnstile 人机验证容器（服务端配置密钥后显示） -->
+        <div ref="tsEl" class="ts-box"></div>
 
         <p class="edit-note">{{ t('manageNote') }}</p>
 

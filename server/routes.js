@@ -5,7 +5,7 @@
 import { Hono } from 'hono'
 import { compress } from 'hono/compress'
 import { getCookie } from 'hono/cookie'
-import { genId, hashPassword, verifyPassword, validatePublish } from './util.js'
+import { genId, hashPassword, verifyPassword, timingSafeEqual, validatePublish } from './util.js'
 import { sanitizePostHtml } from './sanitize.js'
 import { articlePage, passwordPage, notFoundPage, aboutPage, termsPage, privacyPage, txt } from './pages.js'
 
@@ -72,6 +72,16 @@ export function createApp(db, registerStatic = null, env = {}) {
   app.get('/terms', c => htmlRes(c, termsPage(pageLang(c))))
   app.get('/privacy', c => htmlRes(c, privacyPage(pageLang(c))))
 
+  // ---------- 反滥用挑战（未启用 Turnstile 时的轻量验证：算术题 + HMAC 签名） ----------
+  app.get('/api/challenge', async c => {
+    const a = 2 + Math.floor(Math.random() * 8) // 2-9
+    const b = 2 + Math.floor(Math.random() * 8) // 2-9
+    const nonce = genId(12)
+    const exp = Date.now() + 10 * 60_000
+    const sig = await hmacHex(`${a}+${b}:${nonce}:${exp}`, String(env.CHALLENGE_SECRET || 'opus-challenge-v1'))
+    return c.json({ ok: true, a, b, nonce, exp, sig })
+  })
+
   app.get('/api/health', c => c.json({ ok: true, db: db.kind }))
 
   // ---------- 公开配置（前端读取人机验证站点密钥；两者都配置才启用） ----------
@@ -85,13 +95,19 @@ export function createApp(db, registerStatic = null, env = {}) {
     const body = await c.req.json().catch(() => null)
     if (!body) return c.json({ ok: false, error: 'invalid body' }, 400)
 
-    // 人机验证：配置了 Turnstile 密钥后，所有发布必须携带有效 token（脚本/爬虫无法通过）
+    // 人机验证：Turnstile 优先；未配置时使用算术挑战（HMAC 签名防伪造，10 分钟防重放）
     if (env.TURNSTILE_SECRET_KEY) {
       const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
       const ok = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, String(body.turnstileToken ?? ''), ip)
       if (!ok) {
         await sleep(300)
         return c.json({ ok: false, error: 'turnstile failed' }, 403)
+      }
+    } else {
+      const err = await verifyArithmeticChallenge(body.challenge, env)
+      if (err) {
+        await sleep(200)
+        return c.json({ ok: false, error: err }, 400)
       }
     }
 
@@ -300,6 +316,27 @@ async function burnAndServe(c, db, post, lang = 'zh') {
   if (post.burn_after_read) await db.run('DELETE FROM posts WHERE id = ?', post.id)
   c.header('Vary', 'Accept-Language, Cookie')
   return c.html(articlePage(post, lang, origin(c)))
+}
+
+/** HMAC-SHA256 签名（hex） */
+async function hmacHex(payload, secret) {
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(payload))
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
+const CHALLENGE_TTL = 10 * 60_000
+
+/** 校验算术挑战（发布接口用）：返回错误文案或 null */
+async function verifyArithmeticChallenge(ch, env) {
+  if (!ch || typeof ch !== 'object') return 'challenge required'
+  const a = Number(ch.a), b = Number(ch.b)
+  if (!Number.isInteger(a) || !Number.isInteger(b) || a < 2 || b < 2 || a > 9 || b > 9) return 'challenge invalid'
+  if (!Number.isInteger(ch.exp) || ch.exp < Date.now() || ch.exp > Date.now() + 15 * 60_000) return 'challenge expired'
+  const expected = await hmacHex(`${a}+${b}:${ch.nonce}:${ch.exp}`, String(env.CHALLENGE_SECRET || 'opus-challenge-v1'))
+  if (!timingSafeEqual(String(ch.sig), expected)) return 'challenge sig mismatch'
+  if (Number(ch.answer) !== a + b) return 'challenge answer wrong'
+  return null
 }
 
 /** 定期清理：物理删除已过期文章（Workers Cron / VPS 启动时调用） */
