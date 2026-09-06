@@ -281,7 +281,6 @@ const DOCS = {
         ['责任限制', ['在适用法律允许的最大范围内，Opus 对因使用或无法使用本服务而产生的任何直接、间接、附带或后果性损失不承担责任。']],
         ['条款变更', ['本条款可能不时更新，更新后将在本页公布。更新后继续使用本服务即视为接受变更后的条款。']],
         ['联系', ['如对本条款有疑问，请联系 hello@opus.cc。']],
-        ['联系', ['如对本条款有疑问，请联系 hello@opus.cc。']],
       ],
     },
     privacy: {
@@ -294,7 +293,6 @@ const DOCS = {
         ['第三方', ['本站不含广告、统计分析和第三方追踪 Cookie。文章中的外部媒体（图片/视频）由相应第三方域名提供，其行为受各自政策约束。']],
         ['数据的删除', ['阅后即焚：首次成功阅读后立即销毁；有效期：到期后首次被访问时物理删除；手动删除：可随时使用管理密码删除文章。删除即从数据库中移除，不可恢复。']],
         ['政策更新', ['本政策可能不时更新，更新后将在本页公布。']],
-        ['联系', ['如对本政策有疑问，请联系 hello@opus.cc。']],
         ['联系', ['如对本政策有疑问，请联系 hello@opus.cc。']],
       ],
     },
@@ -321,7 +319,6 @@ const DOCS = {
         ['Limitation of Liability', ['To the maximum extent permitted by law, Opus shall not be liable for any direct, indirect, incidental or consequential damages arising from the use of, or inability to use, the service.']],
         ['Changes', ['These terms may be updated from time to time. Continued use after an update constitutes acceptance of the revised terms.']],
         ['Contact', ['Questions about these terms: write to hello@opus.cc.']],
-        ['Contact', ['Questions about these terms: hello@opus.cc.']],
       ],
     },
     privacy: {
@@ -335,7 +332,6 @@ const DOCS = {
         ['Data deletion', ['Burn after reading: destroyed right after the first successful read. Expiry: physically deleted on first access past the deadline. Manual: delete anytime with the manage password. Deletion removes the row from the database permanently.']],
         ['Changes', ['This policy may be updated from time to time; updates are published on this page.']],
         ['Contact', ['Questions about this policy: write to hello@opus.cc.']],
-        ['Contact', ['Questions about this policy: hello@opus.cc.']],
       ],
     },
   }
