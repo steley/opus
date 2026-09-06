@@ -89,6 +89,8 @@ export function validatePublish(body) {
   // 上限同时约束 html 与 json（json 由客户端可控，防止绕过前端塞入大对象消耗存储/配额）
   if (html.length > 500_000) return { error: 'content too large' }
   if (json.length > 1_000_000) return { error: 'content too large' }
+  // 叠加上限：html 与 json 可同时接近各自上限，避免单请求总负载过大
+  if (html.length + json.length > 1_200_000) return { error: 'content too large' }
 
   const viewPassword = typeof body.viewPassword === 'string' ? body.viewPassword : ''
   if (viewPassword && !checkPassword(viewPassword, VIEW_PW_MIN)) return { error: 'view password too short' }

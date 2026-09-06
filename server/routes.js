@@ -23,14 +23,25 @@ const EXPIRY_MS = {
 }
 
 /** 内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 CF Rate Limiting 规则） */
+// CF 反代下 cf-connecting-ip 是访客真实公网 IP（仅 Worker 运行时存在）；x-forwarded-for 兜底
+function clientIp(c) {
+  return c.req.header('cf-connecting-ip')
+    || c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+    || c.req.header('x-real-ip')
+    || 'unknown'
+}
+
 function rateLimit({ windowMs, max }) {
   const hits = new Map()
   return async (c, next) => {
-    const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'local'
+    const ip = clientIp(c)
     const now = Date.now()
     const rec = hits.get(ip)
     if (!rec || now > rec.resetAt) hits.set(ip, { count: 1, resetAt: now + windowMs })
-    else if (++rec.count > max) return c.json({ ok: false, error: 'too many requests' }, 429)
+    else if (++rec.count > max) {
+      console.error(JSON.stringify({ level: 'warn', type: 'rate_limited', ip, method: c.req.method, path: c.req.path }))
+      return c.json({ ok: false, error: 'too many requests' }, 429)
+    }
     if (hits.size > 5000) hits.clear() // 防内存膨胀
     await next()
   }
@@ -64,7 +75,8 @@ export function createApp(db, registerStatic = null, env = {}) {
   registerStatic?.(app)
 
   app.onError((err, c) => {
-    console.error(err)
+    // 结构化错误日志：便于在 Workers 实时日志中按 type/path 检索具体请求
+    console.error(JSON.stringify({ level: 'error', type: 'unhandled', method: c.req.method, path: c.req.path, ip: clientIp(c), message: err?.message, stack: err?.stack }))
     return c.json({ ok: false, error: 'internal error' }, 500)
   })
 
@@ -87,10 +99,11 @@ export function createApp(db, registerStatic = null, env = {}) {
 
     // 人机验证：仅在配置 Turnstile 时启用（下方分支）；未配置则不校验（见内注释）
     if (env.TURNSTILE_SECRET_KEY) {
-      const ip = c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
+      const ip = clientIp(c)
       const ok = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, String(body.turnstileToken ?? ''), ip)
       if (!ok) {
         await sleep(300)
+        console.error(JSON.stringify({ level: 'warn', type: 'turnstile_failed', ip, path: c.req.path }))
         return c.json({ ok: false, error: 'turnstile failed' }, 403)
       }
     }

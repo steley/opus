@@ -9,7 +9,8 @@
     "build": "vite build",
     "start": "node server/index.js",
     "deploy:d1:init": "wrangler d1 execute opus --remote --file schema.sql",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "test": "node --test server/sanitize.test.mjs"
   },
   "dependencies": {
     "@hono/node-server": "^2.1.1",
