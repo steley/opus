@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 /** UI 语言状态：zh / en，模块级单例，各组件直接 import 使用 */
-const saved = localStorage.getItem('opus-lang') ?? localStorage.getItem('write-lang') /* 旧键迁移 */
+const saved = localStorage.getItem('opus-lang')
 export const lang = ref(saved === 'en' ? 'en' : 'zh')
 
 const messages = {

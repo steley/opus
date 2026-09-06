@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 /** 夜间模式状态：localStorage 记忆，首次访问跟随系统偏好 */
-const saved = localStorage.getItem('opus-theme') ?? localStorage.getItem('write-theme') /* 旧键迁移 */
+const saved = localStorage.getItem('opus-theme')
 const prefersDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches
 export const dark = ref(saved ? saved === 'dark' : !!prefersDark)
 
