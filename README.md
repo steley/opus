@@ -2,11 +2,13 @@
 
 > Write. Publish. Done. — opus.cc
 
-一个 telegra.ph 风格的轻量写作/发布工具：自研 UI 的富文本编辑器 + 匿名发布后端 + 密码保护 + 阅后即焚。**同一套代码，支持 VPS（Node + SQLite）与 Cloudflare Workers（D1）两种部署。**
+一个 telegra.ph 风格的轻量写作/发布工具：富文本编辑器 + 匿名发布后端 + 密码保护 + 阅后即焚。
+
+**同一套代码，支持 VPS（Node + SQLite）与 Cloudflare Workers（D1）两种部署。**
 
 Slogan：**落笔，即发布。** / *Write. Publish. Done.*（opus.cc）
 
-前端：Vue 3 + Vite + TipTap 3（headless 引擎，UI 全自研，零外部字体/图标库）。
+前端：Vue 3 + Vite + TipTap 3（headless 引擎，零外部字体/图标库）。
 
 后端：Hono（同构框架，Node 与 Workers 共用同一套路由），数据库适配层同时支持 SQLite 与 D1。
 
