@@ -53,3 +53,25 @@ test('合法 hex 内联颜色保留', () => {
   const out = sanitizePostHtml('<span style="color:#ff0000;background-color:#00ff00">t</span>')
   assert.ok(out.includes('color:#ff0000') && out.includes('background-color:#00ff00'), out)
 })
+
+test('svg 标签及嵌套脚本整体剥离（防 data:image/svg+xml XSS）', () => {
+  const out = sanitizePostHtml('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+  assert.equal(out, '')
+  const out2 = sanitizePostHtml('<p>t</p><svg viewBox="0 0 64 64"><rect width="64"/></svg><p>u</p>')
+  assert.ok(!/<svg/i.test(out2) && /<p>t<\/p>/.test(out2), out2)
+})
+
+test('math 标签及嵌套 HTML 脚本整体剥离', () => {
+  const out = sanitizePostHtml('<math><annotation-xml encoding="text/html"><script>alert(1)</script></annotation-xml></math>')
+  assert.equal(out, '')
+})
+
+test('data:image 内嵌图被移除（降级为空 span）', () => {
+  const out = sanitizePostHtml('<p>x</p><img src="data:image/png;base64,AAAA"><p>y</p>')
+  assert.ok(!/data:/.test(out) && /<span><\/span>/.test(out), out)
+})
+
+test('样式里的 data:url 被去掉', () => {
+  const out = sanitizePostHtml('<span style="background:url(data:image/svg+xml;base64,AAAA)">t</span>')
+  assert.ok(!/data:/.test(out) && out.includes('>t</span>'), out)
+})
