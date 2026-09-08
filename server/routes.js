@@ -195,10 +195,20 @@ export function createApp(db, registerStatic = null, env = {}) {
       if (body.html.length > 500_000) return c.json({ ok: false, error: 'content too large' }, 400)
       html = sanitizePostHtml(body.html)
     }
-    if (typeof body.json === 'string' && body.json.length > 1_000_000) {
-      return c.json({ ok: false, error: 'content too large' }, 400)
+    // json 兼容 object / 字符串（与发布 validatePublish 一致），此处统一序列化并校验可解析
+    // 目的：(1) 前端编辑传 object 也能存盘（此前只认 string 导致 json 列永不更新）；
+    //      (2) 拒绝非法 JSON 入库存坏值（否则后续公开读取 JSON.parse 必炸 500）
+    if (body.json !== undefined) {
+      try {
+        json = typeof body.json === 'string'
+          ? (body.json.trim() ? body.json : '[]')
+          : JSON.stringify(body.json ?? [])
+        JSON.parse(json)
+      } catch {
+        return c.json({ ok: false, error: 'invalid json' }, 400)
+      }
+      if (json.length > 1_000_000) return c.json({ ok: false, error: 'content too large' }, 400)
     }
-    if (typeof body.json === 'string' && body.json.trim()) json = body.json
     await db.run('UPDATE posts SET title = ?, author = ?, html = ?, json = ? WHERE id = ?',
       title, author, html, json, id)
     return c.json({ ok: true })
@@ -237,11 +247,13 @@ export function createApp(db, registerStatic = null, env = {}) {
       await sleep(300)
       return htmlRes(c, passwordPage(id, lang, txt(lang).pwWrong), 401)
     }
-    return servePage(c, db, post, lang)
+    return servePage(c, db, post, lang, true)   // 已通过密码表单提交 → 真人，允许焚毁
   }
 
   app.get('/:id', rateLimit({ windowMs: 60_000, max: 120 }), articleGet)
-  app.post('/:id', articlePwSubmit)
+
+  // 阅读页密码表单 POST 到 /:id，同样需限流（此前漏配，易被并发爆破 4 位弱口令）
+  app.post('/:id', rateLimit({ windowMs: 60_000, max: 30 }), articlePwSubmit)
   // 旧地址兼容：/p/:id 永久重定向到规范地址
   app.get('/p/:id', c => c.redirect(`/${c.req.param('id')}`, 301))
   app.post('/p/:id', rateLimit({ windowMs: 60_000, max: 30 }), articlePwSubmit)
@@ -284,6 +296,17 @@ function pageLang(c) {
   return 'zh'
 }
 
+// 判断是否为“预览爬虫”请求（平台抓卡片的 bot）。真人浏览器 UA + Accept 含 text/html 才会被放行焚毁。
+const PREVIEW_RE = /(telegram|discordbot|slackbot|facebookexternalhit|twitterbot|whatsapp|vkShare|linkedinbot|pinterest|pinterestbot|tumblr|line\/|skypeuripreview|\bimo\b|snapchat|outbrain|embedly|redditbot|google-inspectiontool|bytespider|\bcurl\/|python-requests)/i
+function isPreviewBot(c) {
+  const ua = c.req.header('user-agent') || ''
+  if (PREVIEW_RE.test(ua)) return true
+  const accept = c.req.header('accept')
+  // 提供了 Accept 但不含 text/html → 非浏览器（仅接受 JSON/图等资源），视为非真人读取
+  if (accept && !/text\/html/i.test(accept)) return true
+  return false
+}
+
 function origin(c) {
   const proto = c.req.header('x-forwarded-proto') || new URL(c.req.url).protocol.replace(':', '')
   const host = c.req.header('x-forwarded-host') || c.req.header('host') || new URL(c.req.url).host
@@ -318,7 +341,12 @@ async function readSuccess(c, db, post) {
  *  - 焚文：DELETE ... WHERE burn_after_read=1 RETURNING *，只有真正删成的一个请求
  *    能拿到全文并交付，其余并发请求得到 404（首读即焚、不可再读）。
  *  - 非焚文：仅普通读取交付，保留数据行。 */
-async function servePage(c, db, post, lang = 'zh') {
+async function servePage(c, db, post, lang = 'zh', fromPw = false) {
+  // 阅后即焚避免被“预览爬虫”提前烧毁：焚文对疑似预览请求既不焚毁也不给正文（返回 404）。
+  // 仅当是真人浏览器（UA/Accept 通过）或已通过密码表单提交（fromPw=true）时才真正焚毁交付。
+  if (post.burn_after_read && !fromPw && isPreviewBot(c)) {
+    return htmlRes(c, notFoundPage(lang), 404)
+  }
   if (post.burn_after_read) {
     // 原子焚：抢到删除权才 serve；已被并发焚毁则视为不存在
     const rows = await db.all('DELETE FROM posts WHERE id = ? AND burn_after_read = 1 RETURNING *', post.id)

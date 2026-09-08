@@ -2,3 +2,9 @@ node_modules
 dist
 opus.db
 .DS_Store
+
+# Cloudflare Workers 本地开发产物/密钥（误提交会泄漏 secret）
+.wrangler/
+.dev.vars
+*.dev.vars
+wrangler.local.toml

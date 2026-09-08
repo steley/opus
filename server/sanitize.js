@@ -45,6 +45,18 @@ export function sanitizePostHtml(html) {
     allowedIframeHostnames: iframeHosts,
     transformTags: {
       a: sanitizeHtml.simpleTransform('a', { rel: 'nofollow noopener noreferrer', target: '_blank' }),
+      // iframe 强制受限 sandbox（服务端才是安全边界；前端只给体验，直连 API 需在此兜底）
+      iframe: (tagName, attribs) => {
+        attribs.sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation allow-top-navigation'
+        attribs.referrerpolicy = 'strict-origin-when-cross-origin'
+        return { tagName, attribs }
+      },
+      // div 仅放行编辑器固定使用的两个 class（video-embed / video-file），其余剔除，
+      // 防作者在正文伪造 .pw-card/.edit-link 等真实样式做 UI 钓鱼
+      div: (tagName, attribs) => {
+        if (!['video-embed', 'video-file'].includes(attribs.class)) delete attribs.class
+        return { tagName, attribs }
+      },
       // 阅读页复选框一律禁用，不可交互
       input: (tagName, attribs) => ({ ...attribs, disabled: 'disabled' }),
       // 图片域名不在白名单则整个移除（iframe 域名由 allowedIframeHostnames 把关）

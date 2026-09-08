@@ -68,6 +68,18 @@ function checkPassword(pw, minLen) {
   return typeof pw === 'string' && pw.length >= minLen
 }
 
+/** 判 json 串是否含实质内容（可解析为有节点的文档） */
+function hasDocContent(json) {
+  if (!json || !json.trim()) return false
+  try {
+    const c = JSON.parse(json)
+    if (Array.isArray(c)) return c.length > 0
+    if (c === null || typeof c !== 'object') return String(c).trim().length > 0
+    if (Array.isArray(c.content)) return c.content.length > 0
+    return !!(c.text && String(c.text).trim())  // 形如 {"text":"..."} 的叶节点
+  } catch { return false }
+}
+
 export function escapeHtml(s = '') {
   return String(s)
     .replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
@@ -85,12 +97,19 @@ export function validatePublish(body) {
   const json = typeof body.json === 'string' ? body.json : JSON.stringify(body.json ?? [])
   const burnAfterRead = body.burnAfterRead ? 1 : 0
 
-  if (!html.trim() && json === '[]') return { error: 'empty content' }
+  // json 必须能被解析（发布时对象/字符串都已序列成字符串），避免非法值入库后读取端 JSON.parse 抛错
+  if (json.trim()) { try { JSON.parse(json) } catch { return { error: 'invalid json' } } }
   // 上限同时约束 html 与 json（json 由客户端可控，防止绕过前端塞入大对象消耗存储/配额）
   if (html.length > 500_000) return { error: 'content too large' }
   if (json.length > 1_000_000) return { error: 'content too large' }
   // 叠加上限：html 与 json 可同时接近各自上限，避免单请求总负载过大
   if (html.length + json.length > 1_200_000) return { error: 'content too large' }
+  // 空文档判定：html 剔除标签/实体后无任何文本，且 json 无实质节点 → 拒绝
+  const textLen = html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&amp;|&lt;|&gt;|&quot;|&#0?39;|&#x27;/gi, ' ')
+    .trim().length
+  if (!textLen && !hasDocContent(json)) return { error: 'empty content' }
 
   const viewPassword = typeof body.viewPassword === 'string' ? body.viewPassword : ''
   if (viewPassword && !checkPassword(viewPassword, VIEW_PW_MIN)) return { error: 'view password too short' }

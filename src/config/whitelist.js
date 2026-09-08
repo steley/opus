@@ -30,10 +30,10 @@ export const whitelist = {
 
   /** 域名展示名（发布框"白名单"区显示用） */
   hostNames: {
-    'i.imgur.com': 'imgur',
+    'i.imgur.com': 'Imgur',
     'www.youtube.com': 'YouTube',
     'www.youtube-nocookie.com': 'YouTube',
-    'player.bilibili.com': 'bilibili',
+    'player.bilibili.com': 'Bilibili',
   },
 }
 
