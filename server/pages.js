@@ -207,8 +207,10 @@ export function articlePage(post, lang = 'zh', origin = '') {
 <meta name="twitter:image" content="${escapeHtml(origin)}/og.png">
 <meta name="twitter:title" content="${escapeHtml(post.title || 'Untitled')}">
 <meta name="twitter:description" content="${escapeHtml(description)}">`
+  // 到期时间必须在浏览器按“访客本地时区”格式化——SSR 侧不知访客时区，只透传 epoch 毫秒给 <time> data-ms
   const expiry = post.expires_at
-    ? `<p class="expiry">${m.expiryReminder.replace('{date}', fmtDate(post.expires_at))}</p>`
+    ? `<p class="expiry">${m.expiryReminder.replace('{date}', '<time id="expiry-ts" data-ms="' + post.expires_at + '"></time>')}</p>`
+      + `<script>(function(){var e=document.getElementById('expiry-ts');if(!e)return;var ms=Number(e.getAttribute('data-ms'));if(!ms){return}var d=new Date(ms),p=function(n){return String(n).padStart(2,'0')};e.textContent=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())})();</script>`
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(m.editTitle)}">${m.editEntry}</a>`
   const body = `<main>
