@@ -10,6 +10,7 @@ const TEXT = {
     read: '阅读',
     pwWrong: '密码错误，请重试。',
     expiryReminder: '🕓 本文有效期至 {date}，到期自动删除。',
+    burnReminder: '🔥 阅后即焚：首次打开后即被销毁；若无人阅读，将保留至 {date} 到期自动删除。',
     editEntry: '✎ 编辑',
     labels: { about: '关于', terms: '服务条款', privacy: '隐私政策' },
     editTitle: '输入管理密码进入编辑',
@@ -25,7 +26,7 @@ const TEXT = {
     read: 'Read',
     pwWrong: 'Wrong password, please try again.',
     expiryReminder: '🕓 This article expires on {date} and will be auto-deleted.',
-    editEntry: '✎ Edit',
+    burnReminder: '🔥 Burn after reading: deleted on first open. If never opened, it stays until auto-deleted on {date}.',
     labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
     editTitle: 'Enter manage password to edit',
     notFoundDesc: 'This article does not exist, or was burned / expired.',
@@ -76,6 +77,8 @@ img{max-width:100%;height:auto;border-radius:8px}
 hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
 a{color:var(--accent)}
 .expiry{font-size:13px;color:var(--muted);margin:0 0 26px}
+.expiry.burn{color:#a4501a;font-weight:600}
+:root.dark .expiry.burn{color:#e89a63}
 .home-link{display:inline-block;font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--btn-border);border-radius:8px;padding:7px 16px;background:var(--paper);transition:all .15s}
 .home-link:hover{color:var(--accent);border-color:var(--accent)}
 .pw-card{max-width:380px;margin:18vh auto 0;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:26px;box-shadow:0 8px 28px rgba(0,0,0,.18)}
@@ -208,9 +211,13 @@ export function articlePage(post, lang = 'zh', origin = '') {
 <meta name="twitter:title" content="${escapeHtml(post.title || 'Untitled')}">
 <meta name="twitter:description" content="${escapeHtml(description)}">`
   // 到期时间必须在浏览器按“访客本地时区”格式化——SSR 侧不知访客时区，只透传 epoch 毫秒给 <time> data-ms
+  const dateTimeJs = `<script>(function(){var e=document.getElementById('expiry-ts');if(!e)return;var ms=Number(e.getAttribute('data-ms'));if(!ms){return}var d=new Date(ms),p=function(n){return String(n).padStart(2,'0')};e.textContent=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())})();</script>`
+  const dateEl = '<time id="expiry-ts" data-ms="' + post.expires_at + '"></time>'
+  // 焚文用专属提示强调“阅后即焚”（首读即删），普通文才是“到期自动删除”
   const expiry = post.expires_at
-    ? `<p class="expiry">${m.expiryReminder.replace('{date}', '<time id="expiry-ts" data-ms="' + post.expires_at + '"></time>')}</p>`
-      + `<script>(function(){var e=document.getElementById('expiry-ts');if(!e)return;var ms=Number(e.getAttribute('data-ms'));if(!ms){return}var d=new Date(ms),p=function(n){return String(n).padStart(2,'0')};e.textContent=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())})();</script>`
+    ? (post.burn_after_read
+        ? `<p class="expiry burn">${m.burnReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`
+        : `<p class="expiry">${m.expiryReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`)
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(m.editTitle)}">${m.editEntry}</a>`
   const body = `<main>
