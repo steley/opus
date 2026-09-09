@@ -65,8 +65,9 @@ address{font-style:normal;color:var(--ink-2);font-size:14px;margin:0}
 .edit-link{flex:none;font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--btn-border);border-radius:8px;padding:5px 12px;background:var(--paper);transition:all .15s}
 .edit-link:hover{color:var(--accent);border-color:var(--accent)}
 .meta-actions{display:inline-flex;align-items:center;gap:10px;flex:none}
-.report-link{font-size:13px;color:var(--muted);text-decoration:none;opacity:.85}
-.report-link:hover{color:var(--accent);opacity:1}
+.report-link{font-size:12px;color:var(--hint-bad);text-decoration:none;border:1px solid var(--hint-bad);border-radius:8px;padding:6px 16px;background:var(--paper)}
+.report-link:hover{background:var(--hint-bad);color:var(--paper)}
+.report-row{display:flex;justify-content:flex-start;margin-top:52px}
 p{margin:.55em 0}
 h2{font-size:1.35em;margin:1.1em 0 .4em}
 h3{font-size:1.12em;margin:1em 0 .35em}
@@ -235,10 +236,13 @@ export function articlePage(post, lang = 'zh', origin = '') {
 <address>${post.author ? escapeHtml(post.author) : m.anonymous}</address>
 <div class="meta-actions">
 ${editLink}
-${reportLink}
+</div>
 </div>
 ${expiry}
 <div class="content">${post.html}</div>
+<div class="report-row">
+${reportLink}
+</div>
 </main>`
   return pageShell(post.title || 'Untitled', body, { lang, head })
 }
