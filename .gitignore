@@ -8,3 +8,8 @@ opus.db
 .dev.vars
 *.dev.vars
 wrangler.local.toml
+
+# 数据库导出/备份产物（含真实内容，勿提交）
+backups/
+*.sql.bak
+*.db-export*.sql

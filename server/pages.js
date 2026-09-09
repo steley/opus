@@ -12,6 +12,7 @@ const TEXT = {
     expiryReminder: '🕓 本文有效期至 {date}，到期自动删除。',
     burnReminder: '🔥 阅后即焚：首次打开后即被销毁；若无人阅读，将保留至 {date} 到期自动删除。',
     editEntry: '✎ 编辑',
+    reportLink: '举报',
     labels: { about: '关于', terms: '服务条款', privacy: '隐私政策' },
     editTitle: '输入管理密码进入编辑',
     notFoundDesc: '文章不存在，或已被焚毁/过期删除。',
@@ -25,6 +26,8 @@ const TEXT = {
     pwPlaceholder: 'View password',
     read: 'Read',
     pwWrong: 'Wrong password, please try again.',
+    editEntry: '✎ Edit',
+    reportLink: 'Report',
     expiryReminder: '🕓 This article expires on {date} and will be auto-deleted.',
     burnReminder: '🔥 Burn after reading: deleted on first open. If never opened, it stays until auto-deleted on {date}.',
     labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
@@ -61,6 +64,9 @@ h1{font-size:30px;line-height:1.4;margin:0 0 10px}
 address{font-style:normal;color:var(--ink-2);font-size:14px;margin:0}
 .edit-link{flex:none;font-size:13px;color:var(--ink);text-decoration:none;border:1px solid var(--btn-border);border-radius:8px;padding:5px 12px;background:var(--paper);transition:all .15s}
 .edit-link:hover{color:var(--accent);border-color:var(--accent)}
+.meta-actions{display:inline-flex;align-items:center;gap:10px;flex:none}
+.report-link{font-size:13px;color:var(--muted);text-decoration:none;opacity:.85}
+.report-link:hover{color:var(--accent);opacity:1}
 p{margin:.55em 0}
 h2{font-size:1.35em;margin:1.1em 0 .4em}
 h3{font-size:1.12em;margin:1em 0 .35em}
@@ -220,11 +226,16 @@ export function articlePage(post, lang = 'zh', origin = '') {
         : `<p class="expiry">${m.expiryReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`)
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(m.editTitle)}">${m.editEntry}</a>`
+  // 举报：mailto 直达 hello@opus.cc，主题写入文章完整链接，便于按标题定位（零外部依赖）
+  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent('[Opus 举报] ' + url)}&body=${encodeURIComponent('文章链接：' + url + '\n\n请在正文简述举报原因，便于处理。')}`
+  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${escapeHtml(m.reportLink)}</a>`
   const body = `<main>
 <h1>${escapeHtml(post.title)}</h1>
 <div class="meta-row">
 <address>${post.author ? escapeHtml(post.author) : m.anonymous}</address>
+<div class="meta-actions">
 ${editLink}
+${reportLink}
 </div>
 ${expiry}
 <div class="content">${post.html}</div>
