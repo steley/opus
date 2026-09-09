@@ -13,3 +13,6 @@ wrangler.local.toml
 backups/
 *.sql.bak
 *.db-export*.sql
+
+# BACKLOG/本地待办（由作者自行push，不入库）
+BACKLOG.md
