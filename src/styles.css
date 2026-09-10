@@ -154,6 +154,7 @@ html, body {
 .tbtn.txt.i { font-style: italic; font-family: Georgia, serif; }
 .tbtn.txt.u { text-decoration: underline; text-underline-offset: 2px; }
 .tbtn.txt.s { text-decoration: line-through; }
+.tbtn.txt.code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; font-weight: 600; }
 
 .sep {
   flex: none;

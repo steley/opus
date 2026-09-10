@@ -13,6 +13,7 @@ const TEXT = {
     burnReminder: '🔥 阅后即焚：首次打开后即被销毁；若无人阅读，将保留至 {date} 到期自动删除。',
     editEntry: '✎ 编辑',
     reportLink: '举报',
+    reportSubjectPrefix: '[Opus 举报] ',
     labels: { about: '关于', terms: '服务条款', privacy: '隐私政策' },
     editTitle: '输入管理密码进入编辑',
     notFoundDesc: '文章不存在，或已被焚毁/过期删除。',
@@ -28,6 +29,7 @@ const TEXT = {
     pwWrong: 'Wrong password, please try again.',
     editEntry: '✎ Edit',
     reportLink: 'Report',
+    reportSubjectPrefix: '[Opus Report] ',
     expiryReminder: '🕓 This article expires on {date} and will be auto-deleted.',
     burnReminder: '🔥 Burn after reading: deleted on first open. If never opened, it stays until auto-deleted on {date}.',
     labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
@@ -227,8 +229,7 @@ export function articlePage(post, lang = 'zh', origin = '') {
         : `<p class="expiry">${m.expiryReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`)
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(m.editTitle)}">${m.editEntry}</a>`
-  // 举报：mailto 直达 hello@opus.cc，主题写入文章完整链接，便于按标题定位（零外部依赖）
-  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent('[Opus 举报] ' + url)}&body=${encodeURIComponent('文章链接：' + url + '\n\n请在正文简述举报原因，便于处理。')}`
+  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent(m.reportSubjectPrefix + url)}`
   const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${escapeHtml(m.reportLink)}</a>`
   const body = `<main>
 <h1>${escapeHtml(post.title)}</h1>

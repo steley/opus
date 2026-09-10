@@ -29,6 +29,7 @@ defineEmits(['open-media'])
     <button class="tbtn txt i" :class="{ on: editor.isActive('italic') }" :title="t('italic')" @click="editor.chain().focus().toggleItalic().run()">I</button>
     <button class="tbtn txt u" :class="{ on: editor.isActive('underline') }" :title="t('underline')" @click="editor.chain().focus().toggleUnderline().run()">U</button>
     <button class="tbtn txt s" :class="{ on: editor.isActive('strike') }" :title="t('strike')" @click="editor.chain().focus().toggleStrike().run()">S</button>
+    <button class="tbtn txt code" :class="{ on: editor.isActive('code') }" :title="t('code')" @click="editor.chain().focus().toggleCode().run()">&lt;/&gt;</button>
 
     <ColorMenu :editor="editor" type="color" />
     <ColorMenu :editor="editor" type="bg" />
