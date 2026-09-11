@@ -47,7 +47,8 @@ export function sanitizePostHtml(html) {
       a: sanitizeHtml.simpleTransform('a', { rel: 'nofollow noopener noreferrer', target: '_blank' }),
       // iframe 强制受限 sandbox（服务端才是安全边界；前端只给体验，直连 API 需在此兜底）
       iframe: (tagName, attribs) => {
-        attribs.sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation allow-top-navigation'
+        // 不含 allow-top-navigation：播放器无需顶层导航，避免 iframe 劫持整页（最小权限）
+        attribs.sandbox = 'allow-scripts allow-same-origin allow-popups allow-popups-to-escape-sandbox allow-forms allow-presentation'
         attribs.referrerpolicy = 'strict-origin-when-cross-origin'
         return { tagName, attribs }
       },

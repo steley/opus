@@ -111,3 +111,55 @@ test('阅后即焚：预览爬虫 GET 不焚毁、不泄正文；真人浏览器
   const second = await t.app.request(`/${id}`)
   assert.equal(second.status, 404)
 })
+
+test('并发焚毁：多个真人 GET 只有一个 200，其余 404，且行被物理删除', async () => {
+  const t = make()
+  const { data: pub, res } = await publish(t, { burnAfterRead: true, html: '<p>only-once</p>' })
+  assert.equal(res.status, 200)
+  const id = pub.id
+
+  const human = { accept: 'text/html,application/xhtml+xml' }
+  const results = await Promise.all(
+    Array.from({ length: 8 }, () => t.app.request(`/${id}`, { headers: human }))
+  )
+  const okCount = results.filter(r => r.status === 200).length
+  const notFound = results.filter(r => r.status === 404).length
+  assert.equal(okCount, 1, `应恰有 1 个请求拿到正文，实际 ${okCount}`)
+  assert.equal(notFound, 7, `其余应为 404，实际 ${notFound}`)
+
+  // 拿到正文的那一个确实包含内容（而非空壳 200）
+  const okRes = results.find(r => r.status === 200)
+  assert.ok((await okRes.text()).includes('only-once'))
+
+  // 行已被物理删除
+  const gone = await t.db.get('SELECT id FROM posts WHERE id = ?', id)
+  assert.equal(gone, null)
+})
+
+test('过期删除：expires_at 已过 → GET 404 且行被惰性物理删除', async () => {
+  const t = make()
+  const { data: pub, res } = await publish(t, { html: '<p>expired</p>' })
+  assert.equal(res.status, 200)
+  const id = pub.id
+
+  // 直接把有效期改到过去，模拟已过期
+  await t.db.run('UPDATE posts SET expires_at = ? WHERE id = ?', Date.now() - 1000, id)
+
+  const page = await t.app.request(`/${id}`, { headers: { accept: 'text/html' } })
+  assert.equal(page.status, 404)
+
+  const gone = await t.db.get('SELECT id FROM posts WHERE id = ?', id)
+  assert.equal(gone, null, '访问过期文章后应被惰性物理删除')
+})
+
+test('请求体超限：Content-Length 过大直接 413（不先解析 JSON）', async () => {
+  const t = make()
+  const res = await t.app.request('/api/posts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'content-length': '2000000' },
+    body: JSON.stringify({ title: 'x', html: '<p>x</p>', json: [], managePassword: 'managepass' }),
+  })
+  assert.equal(res.status, 413)
+  const data = await res.json().catch(() => ({}))
+  assert.equal(data.error, 'content too large')
+})

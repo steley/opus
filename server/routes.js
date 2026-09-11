@@ -47,6 +47,19 @@ function rateLimit({ windowMs, max }) {
   }
 }
 
+/** 请求体早期尺寸守卫：仅在 Content-Length 存在且超限时直接 413，避免先把巨型 JSON 读入内存再拒绝。
+ *  chunked / 无 Content-Length 的请求放行，回退到解析后的长度校验（validatePublish）兜底。 */
+function guardBodySize(maxBytes) {
+  return async (c, next) => {
+    const len = c.req.header('content-length')
+    if (len && !Number.isNaN(Number(len)) && Number(len) > maxBytes) {
+      console.error(JSON.stringify({ level: 'warn', type: 'body_too_large', ip: clientIp(c), path: c.req.path, len: Number(len) }))
+      return c.json({ ok: false, error: 'content too large' }, 413)
+    }
+    await next()
+  }
+}
+
 /** 过期即删（惰性）：首次触碰时物理删除并返回 true */
 async function purgeIfExpired(db, post) {
   if (post.expires_at && post.expires_at <= Date.now()) {
@@ -93,7 +106,7 @@ export function createApp(db, registerStatic = null, env = {}) {
   }))
 
   // ---------- 发布 ----------
-  app.post('/api/posts', rateLimit({ windowMs: 10 * 60_000, max: 20 }), async c => {
+  app.post('/api/posts', rateLimit({ windowMs: 10 * 60_000, max: 20 }), guardBodySize(1_500_000), async c => {
     const body = await c.req.json().catch(() => null)
     if (!body) return c.json({ ok: false, error: 'invalid body' }, 400)
 
@@ -180,7 +193,7 @@ export function createApp(db, registerStatic = null, env = {}) {
     return { post }
   }
 
-  app.put('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 30 }), async c => {
+  app.put('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 30 }), guardBodySize(1_500_000), async c => {
     const id = c.req.param('id')
     const guard = await requireManagePw(c, id)
     if (guard.fail) return guard.fail

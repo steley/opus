@@ -43,6 +43,14 @@ test('非白名单 iframe 域名 src 被清空', () => {
   assert.ok(!/evil\.example/.test(out), out)
 })
 
+test('iframe sandbox 为最小权限（不含 allow-top-navigation）', () => {
+  const out = sanitizePostHtml('<iframe src="https://www.youtube.com/embed/abc123" sandbox="allow-top-navigation"></iframe>')
+  assert.ok(out.includes('sandbox='), out)
+  assert.ok(!/allow-top-navigation/.test(out), '不应放行顶层导航：' + out)
+  // 播放器所需的能力仍应保留
+  assert.ok(out.includes('allow-scripts') && out.includes('allow-same-origin'), out)
+})
+
 test('内联样式仅放行 hex 颜色（javascript:url 被去掉）', () => {
   const out = sanitizePostHtml('<span style="background:url(javascript:alert(1));color:#ff0000">t</span>')
   assert.ok(!/javascript:/.test(out), out)
