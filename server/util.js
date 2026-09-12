@@ -2,6 +2,7 @@
 
 const VIEW_PW_MIN = 4
 const EDIT_PW_MIN = 8
+export { VIEW_PW_MIN, EDIT_PW_MIN }
 
 const ID_ALPHABET = '23456789abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ' // 去掉易混淆的 0O1lI
 
@@ -64,7 +65,7 @@ function timingSafeEqual(a, b) {
 }
 
 /** 口令规则：任意可见字符（大小写字母/数字/特殊字符），仅限最小长度 */
-function checkPassword(pw, minLen) {
+export function checkPassword(pw, minLen) {
   return typeof pw === 'string' && pw.length >= minLen
 }
 

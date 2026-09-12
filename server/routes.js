@@ -4,10 +4,9 @@
  */
 import { Hono } from 'hono'
 import { compress } from 'hono/compress'
-import { getCookie } from 'hono/cookie'
-import { genId, hashPassword, verifyPassword, validatePublish } from './util.js'
+import { genId, hashPassword, verifyPassword, validatePublish, checkPassword, VIEW_PW_MIN } from './util.js'
 import { sanitizePostHtml } from './sanitize.js'
-import { articlePage, passwordPage, notFoundPage, aboutPage, termsPage, privacyPage, txt } from './pages.js'
+import { articlePage, passwordPage, notFoundPage, aboutPage, termsPage, privacyPage } from './pages.js'
 
 /** 有效期枚举（默认 30 天） */
 const EXPIRY_MS = {
@@ -21,6 +20,14 @@ const EXPIRY_MS = {
   '180d': 180 * 24 * 3600e3,
   '365d': 365 * 24 * 3600e3,
 }
+
+// ---------- 缓存策略（配合 CF Cache Rule / 浏览器，详见 README「缓存与抗压」） ----------
+// 页面语言已改为客户端切换（pages.js 双语双渲染），HTML 与 cookie/Accept-Language 解耦，可安全缓存。
+// 到期一致性：编辑/删除后的旧内容最多残留 边缘 s-maxage / 浏览器 max-age，按内容敏感度取值。
+const CC_PAGE = 'public, max-age=10, s-maxage=300'   // 普通文章页（内容不可变，仅编辑/删除才变）
+const CC_404 = 'public, max-age=15, s-maxage=60'     // 404（吸收对随机 ID 的扫描，保护 D1）
+const CC_DOCS = 'public, max-age=300, s-maxage=3600' // 关于/条款/隐私（仅部署时变更）
+const CC_NO_STORE = 'no-store'                       // 焚文/密码页：绝不缓存
 
 /** 内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 CF Rate Limiting 规则） */
 // CF 反代下 cf-connecting-ip 是访客真实公网 IP（仅 Worker 运行时存在）；x-forwarded-for 兜底
@@ -93,17 +100,20 @@ export function createApp(db, registerStatic = null, env = {}) {
     return c.json({ ok: false, error: 'internal error' }, 500)
   })
 
-  app.get('/about', c => htmlRes(c, aboutPage(pageLang(c))))
-  app.get('/terms', c => htmlRes(c, termsPage(pageLang(c))))
-  app.get('/privacy', c => htmlRes(c, privacyPage(pageLang(c))))
+  app.get('/about', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, aboutPage()) })
+  app.get('/terms', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, termsPage()) })
+  app.get('/privacy', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, privacyPage()) })
 
   app.get('/api/health', c => c.json({ ok: true, db: db.kind }))
 
   // ---------- 公开配置（前端读取人机验证站点密钥；两者都配置才启用） ----------
-  app.get('/api/config', c => c.json({
-    ok: true,
-    turnstileSiteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null,
-  }))
+  app.get('/api/config', c => {
+    c.header('Cache-Control', 'public, max-age=300')
+    return c.json({
+      ok: true,
+      turnstileSiteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null,
+    })
+  })
 
   // ---------- 发布 ----------
   app.post('/api/posts', rateLimit({ windowMs: 10 * 60_000, max: 20 }), guardBodySize(1_500_000), async c => {
@@ -222,9 +232,22 @@ export function createApp(db, registerStatic = null, env = {}) {
       }
       if (json.length > 1_000_000) return c.json({ ok: false, error: 'content too large' }, 400)
     }
-    await db.run('UPDATE posts SET title = ?, author = ?, html = ?, json = ? WHERE id = ?',
-      title, author, html, json, id)
-    return c.json({ ok: true })
+    // 有效期：传入合法枚举则从现在起重新计时（不传保持不变）
+    let expiresAt = guard.post.expires_at
+    if (body.expiry !== undefined) {
+      if (typeof body.expiry !== 'string' || !(body.expiry in EXPIRY_MS)) return c.json({ ok: false, error: 'invalid expiry' }, 400)
+      expiresAt = Date.now() + EXPIRY_MS[body.expiry]
+    }
+    // 查看密码：传字符串——空串移除保护，非空且 ≥4 位则更新；不传保持不变
+    let viewPw = guard.post.view_pw
+    if (body.viewPassword !== undefined) {
+      const vp = typeof body.viewPassword === 'string' ? body.viewPassword : ''
+      if (vp && !checkPassword(vp, VIEW_PW_MIN)) return c.json({ ok: false, error: 'view password too short' }, 400)
+      viewPw = vp ? await hashPassword(vp) : null
+    }
+    await db.run('UPDATE posts SET title = ?, author = ?, html = ?, json = ?, expires_at = ?, view_pw = ? WHERE id = ?',
+      title, author, html, json, expiresAt, viewPw, id)
+    return c.json({ ok: true, expiresAt })
   })
 
   app.delete('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 30 }), async c => {
@@ -240,27 +263,35 @@ export function createApp(db, registerStatic = null, env = {}) {
 
   const articleGet = async c => {
     const id = c.req.param('id')
-    const lang = pageLang(c)
-    if (!ID_RE.test(id)) return htmlRes(c, notFoundPage(lang), 404)
+    if (!ID_RE.test(id)) {
+      c.header('Cache-Control', CC_404)
+      return htmlRes(c, notFoundPage(), 404)
+    }
     const post = await db.get('SELECT * FROM posts WHERE id = ?', id)
-    if (!post || (await purgeIfExpired(db, post))) return htmlRes(c, notFoundPage(lang), 404)
-    if (post.view_pw) return htmlRes(c, passwordPage(id, lang))
-    return servePage(c, db, post, lang)
+    if (!post || (await purgeIfExpired(db, post))) {
+      c.header('Cache-Control', CC_404)
+      return htmlRes(c, notFoundPage(), 404)
+    }
+    if (post.view_pw) {
+      c.header('Cache-Control', CC_NO_STORE)
+      return htmlRes(c, passwordPage(id))
+    }
+    return servePage(c, db, post)
   }
 
   const articlePwSubmit = async c => {
     const id = c.req.param('id')
-    const lang = pageLang(c)
-    if (!ID_RE.test(id)) return htmlRes(c, notFoundPage(lang), 404)
+    if (!ID_RE.test(id)) return htmlRes(c, notFoundPage(), 404)
     const form = await c.req.parseBody().catch(() => ({}))
     const pw = String(form.pw ?? '')
     const post = await db.get('SELECT * FROM posts WHERE id = ?', id)
-    if (!post || (await purgeIfExpired(db, post))) return htmlRes(c, notFoundPage(lang), 404)
+    if (!post || (await purgeIfExpired(db, post))) return htmlRes(c, notFoundPage(), 404)
     if (post.view_pw && !(await verifyPassword(pw, post.view_pw))) {
       await sleep(300)
-      return htmlRes(c, passwordPage(id, lang, txt(lang).pwWrong), 401)
+      c.header('Cache-Control', CC_NO_STORE)
+      return htmlRes(c, passwordPage(id, 'pwWrong'), 401)
     }
-    return servePage(c, db, post, lang, true)   // 已通过密码表单提交 → 真人，允许焚毁
+    return servePage(c, db, post, true)   // 已通过密码表单提交 → 真人，允许焚毁
   }
 
   app.get('/:id', rateLimit({ windowMs: 60_000, max: 120 }), articleGet)
@@ -295,18 +326,9 @@ async function verifyTurnstile(secret, token, ip) {
 }
 
 function htmlRes(c, html, status = 200) {
-  c.header('Vary', 'Accept-Language, Cookie')
+  // 页面语言由客户端内联脚本按 cookie 切换（见 pages.js），服务端不再依赖 cookie/Accept-Language，
+  // 故不设 Vary——同 URL 对所有人返回同一段字节，才能被浏览器与边缘缓存共享。
   return c.html(html, status)
-}
-
-/** 服务端页面语言：cookie（语言按钮写入）优先，其次 Accept-Language，默认 zh */
-function pageLang(c) {
-  const cookie = getCookie(c, 'opus-lang')
-  if (cookie === 'zh' || cookie === 'en') return cookie
-  const al = (c.req.header('accept-language') || '').toLowerCase()
-  if (al.includes('zh')) return 'zh'
-  if (al.includes('en')) return 'en'
-  return 'zh'
 }
 
 // 判断是否为“预览爬虫”请求（平台抓卡片的 bot）。真人浏览器 UA + Accept 含 text/html 才会被放行焚毁。
@@ -353,21 +375,23 @@ async function readSuccess(c, db, post) {
 /** HTML 阅读页交付：对阅后即焚文采用原子焚毁后再交付，杜绝并发双读。
  *  - 焚文：DELETE ... WHERE burn_after_read=1 RETURNING *，只有真正删成的一个请求
  *    能拿到全文并交付，其余并发请求得到 404（首读即焚、不可再读）。
- *  - 非焚文：仅普通读取交付，保留数据行。 */
-async function servePage(c, db, post, lang = 'zh', fromPw = false) {
+ *  - 非焚文：仅普通读取交付，保留数据行，并下发可缓存头（编辑/删除后旧内容最多残留 s-maxage）。 */
+async function servePage(c, db, post, fromPw = false) {
   // 阅后即焚避免被“预览爬虫”提前烧毁：焚文对疑似预览请求既不焚毁也不给正文（返回 404）。
   // 仅当是真人浏览器（UA/Accept 通过）或已通过密码表单提交（fromPw=true）时才真正焚毁交付。
-  if (post.burn_after_read && !fromPw && isPreviewBot(c)) {
-    return htmlRes(c, notFoundPage(lang), 404)
-  }
   if (post.burn_after_read) {
+    c.header('Cache-Control', CC_NO_STORE)
+    if (!fromPw && isPreviewBot(c)) {
+      return htmlRes(c, notFoundPage(), 404)
+    }
     // 原子焚：抢到删除权才 serve；已被并发焚毁则视为不存在
     const rows = await db.all('DELETE FROM posts WHERE id = ? AND burn_after_read = 1 RETURNING *', post.id)
-    if (!rows.length) return htmlRes(c, notFoundPage(lang), 404)
+    if (!rows.length) return htmlRes(c, notFoundPage(), 404)
     post = rows[0]
+  } else {
+    c.header('Cache-Control', CC_PAGE)
   }
-  c.header('Vary', 'Accept-Language, Cookie')
-  return c.html(articlePage(post, lang, origin(c)))
+  return c.html(articlePage(post, origin(c)))
 }
 
 /** 定期清理：物理删除已过期文章（Workers Cron / VPS 启动时调用） */

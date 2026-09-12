@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import StarterKit from '@tiptap/starter-kit'
 import { TaskList, TaskItem } from '@tiptap/extension-list'
@@ -16,6 +16,7 @@ import Toolbar from './components/Toolbar.vue'
 import MediaDialog from './components/MediaDialog.vue'
 import PublishDialog from './components/PublishDialog.vue'
 import FloatActions from './components/FloatActions.vue'
+import PwEye from './components/PwEye.vue'
 
 const title = ref('')
 const author = ref('')
@@ -29,9 +30,16 @@ const editId = ref(location.pathname.startsWith('/edit/') ? location.pathname.sp
 const managePw = ref('')
 const gatePw = ref('')
 const editGate = ref({ open: !!editId.value, error: '', loading: false })
+const gateShowPw = ref(false)
 const delConfirm = ref(false)
 const updating = ref(false)
 const deleting = ref(false)
+// 编辑时同步修改有效期 / 查看密码（不填则维持原值）
+const editMeta = ref(null)        // { expiresAt, hasViewPassword }，来自 edit-read
+const newExpiry = ref('')         // '' = 不修改
+const viewPwMode = ref('')        // '' = 不修改 | 'remove' = 移除保护 | 'new' = 设置新密码
+const newViewPw = ref('')
+const esShowPw = ref(false)       // 编辑设置栏「设置新密码」输入框的明文切换
 
 async function loadForEdit() {
   if (!gatePw.value) return
@@ -43,6 +51,11 @@ async function loadForEdit() {
     author.value = post.author
     const doc = Array.isArray(post.json) ? { type: 'doc', content: post.json } : post.json
     editor.value?.commands.setContent(post.html || doc || '<p></p>')
+    editMeta.value = { expiresAt: post.expiresAt ?? 0, hasViewPassword: !!post.hasViewPassword }
+    newExpiry.value = ''
+    viewPwMode.value = ''
+    newViewPw.value = ''
+    esShowPw.value = false
     editGate.value = { open: false, error: '', loading: false }
   } catch (e) {
     editGate.value = { open: true, error: e.status === 401 ? t('wrongPw') : apiErrorText(e.message), loading: false }
@@ -51,14 +64,30 @@ async function loadForEdit() {
 
 async function saveUpdate() {
   if (updating.value) return
+  if (viewPwMode.value === 'new' && newViewPw.value.length < 4) {
+    showToast(t('errViewLen'))
+    return
+  }
   updating.value = true
   try {
-    await updatePost(editId.value, managePw.value, {
+    const patch = {
       title: title.value,
       author: author.value,
       html: editor.value?.getHTML() ?? '',
       json: editor.value?.getJSON() ?? {},
-    })
+    }
+    if (newExpiry.value) patch.expiry = newExpiry.value
+    if (viewPwMode.value === 'remove') patch.viewPassword = ''
+    else if (viewPwMode.value === 'new') patch.viewPassword = newViewPw.value
+    const res = await updatePost(editId.value, managePw.value, patch)
+    if (res.expiresAt) editMeta.value = { ...(editMeta.value ?? {}), expiresAt: res.expiresAt }
+    editMeta.value.hasViewPassword = viewPwMode.value === 'new' ? true
+      : viewPwMode.value === 'remove' ? false
+      : (editMeta.value.hasViewPassword ?? false)
+    newExpiry.value = ''
+    viewPwMode.value = ''
+    newViewPw.value = ''
+    esShowPw.value = false
     showToast(t('updated'))
   } catch (e) {
     showToast(`${t('errPublish')}: ${apiErrorText(e.message)}`)
@@ -84,6 +113,15 @@ async function doDelete() {
 function goHome() {
   location.assign('/')
 }
+
+// 编辑设置栏显示「当前有效期至」（浏览器本地时区格式化）
+function fmtDate(ms) {
+  const d = new Date(ms)
+  const p = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+const EXPIRY_OPTS = ['1h', '12h', '24h', '1d', '15d', '30d', '90d', '180d', '365d']
 
 // 标题/作者栏回车跳到下一栏；isComposing 时忽略（中文输入法选词的回车）
 function onTitleEnter(e) {
@@ -131,6 +169,42 @@ watch(lang, () => {
   ed.view.dispatch(ed.state.tr.setMeta('langRefresh', true))
 })
 
+// ---------- 草稿自动保存（仅新发布模式；编辑模式内容已在服务端，不读写草稿） ----------
+const DRAFT_KEY = 'opus-draft'
+let draftTimer = null
+function saveDraft() {
+  if (editId.value) return
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      title: title.value,
+      author: author.value,
+      json: editor.value?.getJSON() ?? null,
+    }))
+  } catch { /* 存储满/隐私模式：静默跳过 */ }
+}
+function queueDraftSave() {
+  clearTimeout(draftTimer)
+  draftTimer = setTimeout(saveDraft, 500)
+}
+watch([title, author], queueDraftSave)
+
+onMounted(() => {
+  const ed = editor.value
+  ed?.on('update', queueDraftSave)
+  if (editId.value) return
+  // 恢复上次未发布的草稿（意外关页/刷新不丢稿）
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null')
+    const hasDoc = Array.isArray(d?.json?.content) && d.json.content.some(n => n.type !== 'paragraph' || (n.content?.length))
+    if (d && (d.title || d.author || hasDoc) && ed) {
+      title.value = d.title || ''
+      author.value = d.author || ''
+      if (hasDoc) ed.commands.setContent(d.json)
+      showToast(t('draftRestored'))
+    }
+  } catch { /* 草稿损坏则忽略 */ }
+})
+
 function onInsert({ mode, result }) {
   if (mode === 'image') {
     editor.value?.chain().focus().setImage({ src: result.url }).run()
@@ -165,6 +239,7 @@ async function onPublishConfirm(payload) {
       json: editor.value?.getJSON() ?? {},
       ...payload,
     })
+    try { localStorage.removeItem(DRAFT_KEY) } catch { /* 忽略 */ }
     publish.value = { open: true, loading: false, url: res.url, error: '', expiresAt: res.expiresAt }
   } catch (e) {
     publish.value = { open: true, loading: false, url: null, error: `${t('errPublish')}: ${apiErrorText(e.message)}`, expiresAt: 0 }
@@ -200,6 +275,33 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
     </header>
 
     <Toolbar v-if="editor" :editor="editor" @open-media="mediaDialog = $event" />
+
+    <!-- 编辑模式：有效期 / 查看密码设置（不填维持原值） -->
+    <div v-if="editId" class="edit-settings">
+      <label class="es-field">
+        <span class="es-label">{{ t('expiry') }}</span>
+        <select v-model="newExpiry" class="expiry-select">
+          <option value="">{{ t('keepUnchanged') }}</option>
+          <option v-for="o in EXPIRY_OPTS" :key="o" :value="o">{{ t('exp' + o) }}</option>
+        </select>
+      </label>
+      <label class="es-field">
+        <span class="es-label">{{ t('viewPassword') }}</span>
+        <select v-model="viewPwMode" class="expiry-select">
+          <option value="">{{ t('keepUnchanged') }}</option>
+          <option v-if="editMeta?.hasViewPassword" value="remove">{{ t('viewPwRemove') }}</option>
+          <option value="new">{{ t('viewPwSetNew') }}</option>
+        </select>
+        <div v-if="viewPwMode === 'new'" class="pw-wrap es-wrap">
+          <input v-model="newViewPw" :type="esShowPw ? 'text' : 'password'" class="pw-input es-pw"
+            :placeholder="t('pwViewPh')" autocomplete="new-password" spellcheck="false" />
+          <PwEye :show="esShowPw" @toggle="esShowPw = !esShowPw" />
+        </div>
+      </label>
+      <span v-if="editMeta?.expiresAt" class="es-exp">
+        {{ t('currentExpiry').replace('{date}', fmtDate(editMeta.expiresAt)) }}
+      </span>
+    </div>
 
     <main class="paper">
       <input
@@ -244,15 +346,18 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
     <div v-if="editGate.open" class="overlay">
       <div class="dialog">
         <h3>{{ t('editPwTitle') }}</h3>
-        <input
-          v-model="gatePw"
-          type="password"
-          class="pw-input"
-          :placeholder="t('pwEditPh')"
-          autocomplete="current-password"
-          spellcheck="false"
-          @keydown.enter="loadForEdit"
-        />
+        <div class="pw-wrap">
+          <input
+            v-model="gatePw"
+            :type="gateShowPw ? 'text' : 'password'"
+            class="pw-input"
+            :placeholder="t('pwEditPh')"
+            autocomplete="current-password"
+            spellcheck="false"
+            @keydown.enter="loadForEdit"
+          />
+          <PwEye :show="gateShowPw" @toggle="gateShowPw = !gateShowPw" />
+        </div>
         <p v-if="editGate.error" class="hint bad">{{ editGate.error }}</p>
         <div class="dialog-actions">
           <button class="btn ghost" @click="goHome">{{ t('back') }}</button>

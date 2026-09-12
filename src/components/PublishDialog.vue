@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n.js'
 import { copyText, getConfig } from '../api.js'
+import PwEye from './PwEye.vue'
 
 /**
  * 发布确认框：
@@ -23,6 +24,8 @@ const viewPw = ref('')
 const managePw = ref('')
 const managePw2 = ref('')
 const copied = ref(null) // null=未尝试 true/false
+const showPw = ref(false)
+const showViewPw = ref(false)
 
 // Turnstile 人机验证（仅当服务端配置了密钥对时启用）
 const tsSiteKey = ref(null)
@@ -179,19 +182,28 @@ function fmtDate(ms) {
 
         <!-- 组2：查看密码 -->
         <label class="field-label">{{ t('viewPassword') }}</label>
-        <input v-model="viewPw" type="password" class="pw-input" :placeholder="t('pwViewPh')"
-          autocomplete="new-password" spellcheck="false" />
+        <div class="pw-wrap">
+          <input v-model="viewPw" :type="showViewPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwViewPh')"
+            autocomplete="new-password" spellcheck="false" />
+          <PwEye :show="showViewPw" @toggle="showViewPw = !showViewPw" />
+        </div>
 
         <hr class="divider" />
 
         <!-- 组3：管理密码 + 再次确认 + 权限注释 -->
         <label class="field-label">{{ t('managePassword') }}</label>
-        <input v-model="managePw" type="password" class="pw-input" :placeholder="t('pwEditPh')"
-          autocomplete="new-password" spellcheck="false" />
+        <div class="pw-wrap">
+          <input v-model="managePw" :type="showPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwEditPh')"
+            autocomplete="new-password" spellcheck="false" />
+          <PwEye :show="showPw" @toggle="showPw = !showPw" />
+        </div>
 
         <label class="field-label">{{ t('managePasswordAgain') }}</label>
-        <input v-model="managePw2" type="password" class="pw-input" :placeholder="t('pwEditPh')"
-          autocomplete="new-password" spellcheck="false" />
+        <div class="pw-wrap">
+          <input v-model="managePw2" :type="showPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwEditPh')"
+            autocomplete="new-password" spellcheck="false" />
+          <PwEye :show="showPw" @toggle="showPw = !showPw" />
+        </div>
 
         <!-- Turnstile 人机验证容器（服务端配置密钥后显示） -->
         <div ref="tsEl" class="ts-box"></div>

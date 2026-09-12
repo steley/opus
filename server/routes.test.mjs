@@ -163,3 +163,89 @@ test('请求体超限：Content-Length 过大直接 413（不先解析 JSON）',
   const data = await res.json().catch(() => ({}))
   assert.equal(data.error, 'content too large')
 })
+
+test('PUT 修改有效期：从现在起重新计时并返回新 expiresAt；非法枚举 400', async () => {
+  const t = make()
+  const { data: pub } = await publish(t)
+  const id = pub.id
+  const before = (await t.db.get('SELECT expires_at FROM posts WHERE id = ?', id)).expires_at
+  const up = await t.app.request(`/api/posts/${id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', expiry: '365d' }),
+  })
+  assert.equal(up.status, 200)
+  const data = await up.json()
+  const after = (await t.db.get('SELECT expires_at FROM posts WHERE id = ?', id)).expires_at
+  assert.ok(after > before, '新有效期应晚于原值（默认 30d → 365d）')
+  assert.ok(Math.abs(data.expiresAt - after) < 5, '响应应返回新的 expiresAt')
+  assert.ok(after - Date.now() <= 365 * 24 * 3600e3 + 2000, '365d 应从现在起计')
+
+  const bad = await t.app.request(`/api/posts/${id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', expiry: '2h' }),
+  })
+  assert.equal(bad.status, 400)
+})
+
+test('PUT 修改/移除查看密码：设置后匿名读 401、带密码读 200；空串移除恢复公开', async () => {
+  const t = make()
+  const { data: pub } = await publish(t)
+  const id = pub.id
+
+  // 设置查看密码
+  const set = await t.app.request(`/api/posts/${id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', viewPassword: 'viewpw' }),
+  })
+  assert.equal(set.status, 200)
+  const noPw = await t.app.request(`/api/posts/${id}`)
+  assert.equal(noPw.status, 401, '设置后匿名读取应 401')
+
+  // 过短被拒
+  const short = await t.app.request(`/api/posts/${id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', viewPassword: 'abc' }),
+  })
+  assert.equal(short.status, 400)
+
+  // 带密码读成功（走 /read）
+  const withPw = await t.app.request(`/api/posts/${id}/read`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ viewPassword: 'viewpw' }),
+  })
+  assert.equal(withPw.status, 200)
+
+  // 空串移除 → 恢复公开
+  const remove = await t.app.request(`/api/posts/${id}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', viewPassword: '' }),
+  })
+  assert.equal(remove.status, 200)
+  const open = await t.app.request(`/api/posts/${id}`)
+  assert.equal(open.status, 200, '移除后匿名读取应恢复 200')
+})
+
+test('普通文章页下发可缓存头且无 Vary；焚文/密码页 no-store', async () => {
+  const t = make()
+  const { data: pub } = await publish(t, { html: '<p>cacheable</p>' })
+  const page = await t.app.request(`/${pub.id}`, { headers: { accept: 'text/html' } })
+  assert.equal(page.status, 200)
+  assert.match(page.headers.get('cache-control'), /s-maxage=300/)
+  // 语言/cookie 解耦后不再因内容协商分裂缓存（compress 的 Accept-Encoding 属正常传输协商，允许）
+  assert.doesNotMatch(page.headers.get('vary') ?? '', /cookie|accept-language/i)
+
+  const { data: burn } = await publish(t, { burnAfterRead: true, html: '<p>burn</p>' })
+  const burnPage = await t.app.request(`/${burn.id}`, { headers: { accept: 'text/html' } })
+  assert.equal(burnPage.headers.get('cache-control'), 'no-store')
+
+  const { data: locked } = await publish(t, { viewPassword: 'viewpw', html: '<p>locked</p>' })
+  const pwPage = await t.app.request(`/${locked.id}`, { headers: { accept: 'text/html' } })
+  assert.equal(pwPage.status, 200)
+  assert.equal(pwPage.headers.get('cache-control'), 'no-store')
+})

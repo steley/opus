@@ -54,6 +54,9 @@ defineEmits(['open-media'])
     <button class="tbtn" :class="{ on: editor.isActive('codeBlock') }" :title="t('codeBlock')" @click="editor.chain().focus().toggleCodeBlock().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" /></svg>
     </button>
+    <button class="tbtn" :title="t('hr')" @click="editor.chain().focus().setHorizontalRule().run()">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M2.5 8h11" /><path d="M2.5 5.2v5.6M13.5 5.2v5.6" opacity=".45" /></svg>
+    </button>
 
     <span class="sep" />
 

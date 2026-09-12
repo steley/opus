@@ -16,10 +16,12 @@ Slogan：**落笔，即发布。** / *Write. Publish. Done.*（opus.cc）
 
 ### 编辑器
 - 正文小节 H2/H3（H1 保留给页面标题，阅读页模板渲染）、粗/斜/下划线/删除线
-- 文字颜色 + 背景色（色板 + hex）、有序/无序/checklist、引用、代码块
+- 文字颜色 + 背景色（色板 + hex）、有序/无序/checklist、引用、代码块、分割线
 - URL 图片插入 / YouTube、B 站视频链接嵌入 iframe（sandbox 受限）。
   > 注：视频直链（mp4 直链 → `<video>`）已停用，仅保留平台嵌入，避免外链版权与不可靠（服务端亦不解析 `<video>`），**三层白名单**见下
 - 标题/作者栏回车依次跳转；页面不满一屏时 footer 贴底（非 fixed）
+- 管理密码框带明文切换（眼睛按钮）——管理密码丢失即永久锁死，防手误打错；查看密码同样支持
+- 草稿自动保存：标题/作者/正文每 500ms 存 localStorage，刷新/关页自动恢复
 - 双主题：日间「暖纸色」、夜间「柔和暖灰」，系统黑体栈，零外部资源
 - 右下角悬浮：夜间切换 / 中英文切换 / 返回顶部
 
@@ -35,9 +37,20 @@ Slogan：**落笔，即发布。** / *Write. Publish. Done.*（opus.cc）
 - 查看密码：阅读页出现密码表单（无 JS 流程），错误密码 401 + 延迟响应防爆破
 - 管理密码：编辑与删除的唯一凭证，PBKDF2-SHA256 加盐哈希存储
 
+### 阅读页
+- 长文自动目录：正文 ≥3 个 h2/h3 时在正文前渲染折叠目录（`<details>` 原生折叠，零 JS），标题自动注入锚点
+- 代码块悬浮一键复制（图标按钮，成功显示 ✓，含 execCommand 降级）
+- 图片点击灯箱放大（点图开、点背景或 Esc 关）
+- 有效期/焚毁提示按访客本地时区显示；举报入口（mailto）；不进搜索引擎索引
+
 ### 编辑与删除
 - 阅读页右上角「✎ 编辑」→ 输入管理密码 → 进入编辑模式（`/edit/{id}`）：文章载入编辑器，顶栏「发布」位置变为「删除」「更新」两个按钮
+- 编辑栏可同时修改**有效期**（从现在起重新计时，默认不修改）与**查看密码**（设置新密码 / 移除保护）
 - 「更新」保存修改到服务端（服务端净化后入库）；「删除」弹出确认框后物理删除并回到首页
+
+### 草稿自动保存
+- 新发布模式下，标题/作者/正文每 500ms 自动存入 localStorage；意外关页/刷新后重开自动恢复并提示
+- 发布成功后草稿清空；编辑已有文章（`/edit/{id}`）不读写草稿（内容已在服务端）
 
 ## 快速开始（本地开发）
 
@@ -204,7 +217,7 @@ jobs:
 | GET | `/api/posts/:id` | 公开读取（有查看密码时 401） |
 | POST | `/api/posts/:id/read` | `{ viewPassword }` 带密码读取；**阅后即焚/已过期在成功访问时物理删除** |
 | POST | `/api/posts/:id/edit-read` | `{ managePassword }` 编辑器读取（不触发焚毁） |
-| PUT | `/api/posts/:id` | `{ managePassword, title?, author?, html?, json? }` 编辑 |
+| PUT | `/api/posts/:id` | `{ managePassword, title?, author?, html?, json?, expiry?, viewPassword? }` 编辑；`expiry` 传合法枚举则**从现在起重新计时**，`viewPassword` 传空串移除保护、非空（≥4 位）则更新，均不传保持不变 → `{ ok, expiresAt }` |
 | DELETE | `/api/posts/:id` | `{ managePassword }` 删除 |
 | GET | `/p/:id` | **已废弃**：301 重定向到 `/:id` |
 | GET | `/:id` | 阅读页（HTML；受保护时返回密码表单；显示有效期提醒与编辑入口） |
@@ -212,6 +225,27 @@ jobs:
 | GET | `/edit/:id` | 编辑模式（前端应用，管理密码门） |
 
 错误统一 `{ ok: false, error }`；发布与敏感读取有内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 Cloudflare Rate Limiting 规则）。
+
+## 缓存与抗压
+
+阅读页是**不可变内容**（只有编辑/删除/焚毁会改变它），因此页面与语言、cookie 完全解耦（服务端同时渲染中英两份文案，客户端内联脚本按 `opus-lang` cookie 切换显示，无刷新），同 URL 对所有人返回同一段字节，可安全缓存：
+
+| 内容 | Cache-Control |
+|---|---|
+| 普通文章页 | `public, max-age=10, s-maxage=300` |
+| 404 | `public, max-age=15, s-maxage=60` |
+| 关于/条款/隐私 | `public, max-age=300, s-maxage=3600` |
+| `/api/config` | `public, max-age=300` |
+| 焚文 / 密码页 / 表单响应 | `no-store`（绝不缓存） |
+
+**免费额度账**（Workers 免费版）：静态资源（首页、JS/CSS、og.png、robots/sitemap）走 Workers Static Assets 资产层交付，**不计请求、不限量**；计入每天 10 万次 Worker 调用的只有文章页与 `/api/*`。按一次冷阅读 1 次动态调用估算，免费版可支撑约 **8–10 万次文章冷阅读/天**；同一篇被反复打开的热文由缓存吸收，几乎不限量。
+
+**进一步解锁（可选，Dashboard 配置）**：在 Cloudflare Dashboard → opus.cc → Caching → Cache Rules 新建一条规则——
+
+- If: `http.host eq "opus.cc" and not starts_with(http.request.uri.path, "/api") and not starts_with(http.request.uri.path, "/edit")`
+- Then: Eligible for cache，Edge TTL = **Use cache-control header if present**（遵守上面的 s-maxage）
+
+命中后同一 PoP 的重复阅读不再触发 Worker 调用与 D1 读取，热门文章近乎无限抗压。**一致性代价**：边缘缓存无法跨 PoP 主动清除，编辑/删除后的旧内容最多残留 s-maxage（文章 5 分钟、404 1 分钟、文档 1 小时），这是用有界陈旧换容量的刻意取舍；焚文与密码页 no-store，永不受影响。
 
 ## 安全模型（三层白名单）
 

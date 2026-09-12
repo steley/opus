@@ -1,7 +1,7 @@
 import { escapeHtml } from './util.js'
 import { FOOTER_LINKS, SITE_NAME } from '../src/config/site.js'
 
-/** 服务端渲染页面的双语文案（按请求的 Accept-Language 选择） */
+/** 服务端页面双语文案（zh/en 同时渲染进 HTML，客户端按 opus-lang cookie 切换显示） */
 const TEXT = {
   zh: {
     protectedTitle: '🔒 受保护的文章',
@@ -12,10 +12,10 @@ const TEXT = {
     expiryReminder: '🕓 本文有效期至 {date}，到期自动删除。',
     burnReminder: '🔥 阅后即焚：首次打开后即被销毁；若无人阅读，将保留至 {date} 到期自动删除。',
     editEntry: '✎ 编辑',
+    editTitle: '输入管理密码进入编辑',
     reportLink: '举报',
     reportSubjectPrefix: '[Opus 举报] ',
     labels: { about: '关于', terms: '服务条款', privacy: '隐私政策' },
-    editTitle: '输入管理密码进入编辑',
     notFoundDesc: '文章不存在，或已被焚毁/过期删除。',
     backHome: '返回首页',
     anonymous: 'Anonymous',
@@ -27,13 +27,13 @@ const TEXT = {
     pwPlaceholder: 'View password',
     read: 'Read',
     pwWrong: 'Wrong password, please try again.',
-    editEntry: '✎ Edit',
-    reportLink: 'Report',
-    reportSubjectPrefix: '[Opus Report] ',
     expiryReminder: '🕓 This article expires on {date} and will be auto-deleted.',
     burnReminder: '🔥 Burn after reading: deleted on first open. If never opened, it stays until auto-deleted on {date}.',
-    labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
+    editEntry: '✎ Edit',
     editTitle: 'Enter manage password to edit',
+    reportLink: 'Report',
+    reportSubjectPrefix: '[Opus Report] ',
+    labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
     notFoundDesc: 'This article does not exist, or was burned / expired.',
     backHome: 'Back to home',
     anonymous: 'Anonymous',
@@ -41,7 +41,9 @@ const TEXT = {
   },
 }
 
-export const txt = lang => TEXT[lang] ?? TEXT.zh
+/** 双语对：zh/en 各渲染一份（.t-en 默认 hidden），客户端内联脚本按 cookie 切换。
+ *  页面因此与语言/cookie 解耦，成为可被浏览器与边缘共享缓存的同一段字节。 */
+const dual = (zh, en) => `<span class="t-zh">${zh}</span><span class="t-en" hidden>${en}</span>`
 
 /** 阅读页基础样式（与编辑器排版观感一致，纯内联不依赖外部资源） */
 const READER_CSS = `
@@ -71,6 +73,16 @@ address{font-style:normal;color:var(--ink-2);font-size:14px;margin:0}
 .report-link:hover{background:var(--hint-bad);color:var(--paper)}
 .report-row{display:flex;justify-content:flex-start;margin-top:52px}
 p{margin:.55em 0}
+.content pre{position:relative}
+.code-copy{position:absolute;top:8px;right:8px;width:28px;height:28px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--ink-2);cursor:pointer;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .15s,color .15s;padding:0}
+.content pre:hover .code-copy,.code-copy:focus-visible{opacity:1}
+.code-copy:hover{color:var(--accent);border-color:var(--accent)}
+.code-copy.ok{color:var(--accent);border-color:var(--accent);opacity:1}
+@media(hover:none){.code-copy{opacity:.75}}
+.content img{cursor:zoom-in}
+.lightbox{position:fixed;inset:0;z-index:100;background:rgba(20,18,14,.88);display:flex;align-items:center;justify-content:center;cursor:zoom-out;opacity:0;visibility:hidden;transition:opacity .18s,visibility .18s}
+.lightbox.show{opacity:1;visibility:visible}
+.lightbox img{max-width:95vw;max-height:95vh;border-radius:8px;box-shadow:0 12px 48px rgba(0,0,0,.4)}
 h2{font-size:1.35em;margin:1.1em 0 .4em}
 h3{font-size:1.12em;margin:1em 0 .35em}
 blockquote{margin:.9em 0;padding:2px 0 2px 16px;border-left:3px solid var(--line);color:var(--ink-2)}
@@ -85,6 +97,14 @@ img{max-width:100%;height:auto;border-radius:8px}
 .video-file video{width:100%;border-radius:9px}
 hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
 a{color:var(--accent)}
+html{scroll-behavior:smooth}
+h2[id],h3[id]{scroll-margin-top:16px}
+.toc{background:var(--hover);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin:0 0 26px;font-size:14px}
+.toc summary{cursor:pointer;color:var(--ink-2);font-size:13px;letter-spacing:.5px}
+.toc nav{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.toc a{color:var(--ink);text-decoration:none;border-radius:6px;padding:3px 8px}
+.toc a:hover{background:var(--surface);color:var(--accent)}
+.toc a.toc-lv3{padding-left:24px;font-size:13px;color:var(--ink-2)}
 .expiry{font-size:13px;color:var(--muted);margin:0 0 26px}
 .expiry.burn{color:#a4501a;font-weight:600}
 :root.dark .expiry.burn{color:#e89a63}
@@ -115,14 +135,39 @@ a{color:var(--accent)}
 
 const FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f1c17'/%3E%3Cpath d='M32 9c7.4 4.9 11.6 11.5 11.6 19 0 6.8-4.2 12.6-11.6 26-7.4-13.4-11.6-19.2-11.6-26C20.4 20.5 24.6 13.9 32 9Z' fill='%23f7f3ea'/%3E%3Ccircle cx='32' cy='28.5' r='3.6' fill='%231f1c17'/%3E%3Cpath d='M32 32.5V49.5' stroke='%231f1c17' stroke-width='2.8'/%3E%3C/svg%3E"
 
-const pageShell = (title, body, { lang = 'zh', head = '' } = {}) => {
-  const m = txt(lang)
+// 语言切换：读 opus-lang cookie，切换 .t-zh/.t-en 的 hidden 与 html[lang]，无刷新。
+// 双语文案已在 HTML 内（dual()），页面字节与语言无关 → 可被浏览器/边缘缓存。
+const LANG_JS = `
+(function(){
+  function readLang(){ try{ var m=/(?:^|;\\s*)opus-lang=(zh|en)/.exec(document.cookie); return m?m[1]:'zh' }catch(e){ return 'zh' } }
+  function apply(lang){
+    document.documentElement.setAttribute('lang',lang);
+    var zh=document.querySelectorAll('.t-zh'),en=document.querySelectorAll('.t-en'),i;
+    for(i=0;i<zh.length;i++) zh[i].hidden=lang!=='zh';
+    for(i=0;i<en.length;i++) en[i].hidden=lang!=='en';
+    var ps=document.querySelectorAll('[data-ph-zh]');
+    for(i=0;i<ps.length;i++) ps[i].placeholder=ps[i].getAttribute(lang==='zh'?'data-ph-zh':'data-ph-en')||'';
+    var b=document.getElementById('fab-lang'); if(b) b.textContent=lang==='zh'?'EN':'中';
+  }
+  apply(readLang());
+  var btn=document.getElementById('fab-lang');
+  if(btn) btn.addEventListener('click',function(){
+    if(btn.dataset.busy) return; btn.dataset.busy='1';
+    var next=document.documentElement.getAttribute('lang')==='zh'?'en':'zh';
+    try{ document.cookie='opus-lang='+next+';max-age=31536000;path=/' }catch(e){}
+    apply(next);
+    setTimeout(function(){ delete btn.dataset.busy },300);
+  });
+})();`
+
+const pageShell = (title, body, { head = '' } = {}) => {
+  const zh = TEXT.zh, en = TEXT.en
   const year = new Date().getFullYear()
   const footerLinks = FOOTER_LINKS
-    .map(l => `<a href="${l.path}">${escapeHtml(txt(lang).labels?.[l.labelKey] ?? l.labelKey)}</a>`)
+    .map(l => `<a href="${l.path}">${dual(escapeHtml(zh.labels?.[l.labelKey] ?? l.labelKey), escapeHtml(en.labels?.[l.labelKey] ?? l.labelKey))}</a>`)
     .join('\n    ')
   return `<!doctype html>
-<html lang="${lang}">
+<html lang="zh">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -145,7 +190,7 @@ ${head}
     <svg class="icon-moon" width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M13.9 9.9A6.2 6.2 0 0 1 6.1 2.1 6.2 6.2 0 1 0 13.9 9.9Z"/></svg>
     <svg class="icon-sun" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><circle cx="8" cy="8" r="3"/><path d="M8 1.2v1.8M8 13v1.8M1.2 8H3M13 8h1.8M3.2 3.2l1.3 1.3M11.5 11.5l1.3 1.3M12.8 3.2l-1.3 1.3M4.5 11.5l-1.3 1.3"/></svg>
   </button>
-  <button class="fab" id="fab-lang" aria-label="language">${lang === 'zh' ? 'EN' : '中'}</button>
+  <button class="fab" id="fab-lang" aria-label="language">EN</button>
   <button class="fab" id="fab-top" aria-label="top">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 13.5v-11M3.8 6.7 8 2.5l4.2 4.2"/></svg>
   </button>
@@ -154,6 +199,7 @@ ${head}
 (function(){
   function on(id, fn, unlockMs){
     var el = document.getElementById(id);
+    if (!el) return;
     el.addEventListener('click', function(){
       if (el.dataset.busy) return;
       el.dataset.busy = '1';
@@ -167,24 +213,14 @@ ${head}
     var m = document.querySelector('meta[name=theme-color]');
     if (m) m.content = dark ? '#22262a' : '#f7f3ea';
   }, 400);
-  on('fab-lang', function(){
-    var next = document.documentElement.getAttribute('lang') === 'zh' ? 'en' : 'zh';
-    document.cookie = 'opus-lang=' + next + ';max-age=31536000;path=/';
-    location.reload();
-  });
   on('fab-top', function(){
     window.scrollTo({ top: 0, behavior: 'smooth' });
   });
 })();
 </script>
+<script>${LANG_JS}</script>
 </body>
 </html>`
-}
-
-function fmtDate(ms) {
-  const d = new Date(ms)
-  const p = n => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 /** 从 HTML 提取纯文本摘要（正文前 160 字） */
@@ -198,10 +234,66 @@ function plainText(html, max = 160) {
     .slice(0, max)
 }
 
+/** 长文目录：给 h2/h3 注入锚点 id 并收集条目（正文 HTML 已净化，标签仅用于提取纯文本标题） */
+function buildToc(html) {
+  const items = []
+  const newHtml = (html || '').replace(/<h([23])((?:\s[^>]*)?)>([\s\S]*?)<\/h\1>/gi, (m, lv, attrs, inner) => {
+    const id = `h-${items.length}`
+    const text = inner.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    items.push({ lv: +lv, id, text })
+    return `<h${lv}${attrs || ''} id="${id}">${inner}</h${lv}>`
+  })
+  return { html: newHtml, items }
+}
+
+/** 阅读页增强（零依赖内联 JS）：代码块一键复制 + 图片灯箱。仅文章页引入。 */
+const READER_ENHANCE_JS = `
+(function(){
+  /* 代码块一键复制：图标按钮，成功后短暂显示 ✓（图标化避免双语问题） */
+  var ICON='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  document.querySelectorAll('.content pre').forEach(function(pre){
+    if (pre.querySelector('.code-copy')) return;
+    var btn=document.createElement('button');
+    btn.type='button'; btn.className='code-copy'; btn.innerHTML=ICON;
+    btn.setAttribute('aria-label','copy code');
+    function done(){ btn.classList.add('ok'); btn.textContent='\\u2713'; setTimeout(function(){ btn.classList.remove('ok'); btn.innerHTML=ICON; },1500); }
+    function fallback(text){
+      var ta=document.createElement('textarea'); ta.value=text;
+      ta.style.position='fixed'; ta.style.opacity='0';
+      document.body.appendChild(ta); ta.select();
+      try{ document.execCommand('copy'); done() }catch(e){}
+      ta.remove();
+    }
+    btn.addEventListener('click',function(){
+      var text=pre.innerText.replace(/\\n$/,'');
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done,function(){ fallback(text) });
+      else fallback(text);
+    });
+    pre.appendChild(btn);
+  });
+  /* 图片灯箱：点击放大，点击任意处/Esc 关闭 */
+  var imgs=document.querySelectorAll('.content img');
+  if (imgs.length){
+    var box=document.createElement('div'); box.className='lightbox';
+    var big=document.createElement('img');
+    box.appendChild(big);
+    box.addEventListener('click',function(){ box.classList.remove('show'); });
+    document.addEventListener('keydown',function(e){ if(e.key==='Escape') box.classList.remove('show'); });
+    imgs.forEach(function(img){
+      img.addEventListener('click',function(){
+        big.src=img.currentSrc||img.src;
+        big.alt=img.alt||'';
+        box.classList.add('show');
+      });
+    });
+    document.body.appendChild(box);
+  }
+})();`
+
 /** 文章阅读页：产品决策——所有文章一律不进搜索引擎索引；OG/Twitter 仅用于分享预览 */
-export function articlePage(post, lang = 'zh', origin = '') {
-  const m = txt(lang)
-  const description = plainText(post.html) || m.expiryReminder.replace('{date}', fmtDate(post.expires_at))
+export function articlePage(post, origin = '') {
+  const zh = TEXT.zh, en = TEXT.en
+  const description = plainText(post.html) || '落笔，即发布。Write. Publish. Done.'
   const url = `${origin}/${post.id}`
   const head = `<meta name="description" content="${escapeHtml(description)}">
 <meta name="robots" content="noindex, nofollow">
@@ -220,73 +312,84 @@ export function articlePage(post, lang = 'zh', origin = '') {
 <meta name="twitter:title" content="${escapeHtml(post.title || 'Untitled')}">
 <meta name="twitter:description" content="${escapeHtml(description)}">`
   // 到期时间必须在浏览器按“访客本地时区”格式化——SSR 侧不知访客时区，只透传 epoch 毫秒给 <time> data-ms
-  const dateTimeJs = `<script>(function(){var e=document.getElementById('expiry-ts');if(!e)return;var ms=Number(e.getAttribute('data-ms'));if(!ms){return}var d=new Date(ms),p=function(n){return String(n).padStart(2,'0')};e.textContent=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())})();</script>`
-  const dateEl = '<time id="expiry-ts" data-ms="' + post.expires_at + '"></time>'
-  // 焚文用专属提示强调“阅后即焚”（首读即删），普通文才是“到期自动删除”
+  const dateTimeJs = `<script>(function(){var es=document.querySelectorAll('.expiry-ts');if(!es.length)return;for(var i=0;i<es.length;i++){var ms=Number(es[i].getAttribute('data-ms'));if(!ms)continue;var d=new Date(ms),p=function(n){return String(n).padStart(2,'0')};es[i].textContent=d.getFullYear()+'-'+p(d.getMonth()+1)+'-'+p(d.getDate())+' '+p(d.getHours())+':'+p(d.getMinutes())}})();</script>`
+  const dateEl = '<time class="expiry-ts" data-ms="' + post.expires_at + '"></time>'
+  // 焚文用专属提示强调“阅后即焚”（首读即删），普通文才是“到期自动删除”；zh/en 各渲染一份
+  const expiryCls = post.burn_after_read ? 'expiry burn' : 'expiry'
+  const rem = (m) => (post.burn_after_read ? m.burnReminder : m.expiryReminder).replace('{date}', dateEl)
   const expiry = post.expires_at
-    ? (post.burn_after_read
-        ? `<p class="expiry burn">${m.burnReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`
-        : `<p class="expiry">${m.expiryReminder.replace('{date}', dateEl)}</p>${dateTimeJs}`)
+    ? `<p class="${expiryCls} t-zh">${rem(zh)}</p><p class="${expiryCls} t-en" hidden>${rem(en)}</p>${dateTimeJs}`
     : ''
-  const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(m.editTitle)}">${m.editEntry}</a>`
-  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent(m.reportSubjectPrefix + url)}`
-  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${escapeHtml(m.reportLink)}</a>`
+  const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(zh.editTitle)} / ${escapeHtml(en.editTitle)}">${dual(zh.editEntry, en.editEntry)}</a>`
+  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent(zh.reportSubjectPrefix + url)}`
+  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${dual(zh.reportLink, en.reportLink)}</a>`
+  const authorLine = post.author ? escapeHtml(post.author) : zh.anonymous
+  // 长文目录：≥3 个 h2/h3 才显示（<details> 原生折叠，零 JS）
+  const { html: contentHtml, items: tocItems } = buildToc(post.html)
+  const toc = tocItems.length >= 3
+    ? `<details class="toc">
+<summary>${dual('目录', 'Contents')}</summary>
+<nav>${tocItems.map(it => `<a class="toc-lv${it.lv}" href="#${it.id}">${escapeHtml(it.text || '…')}</a>`).join('')}</nav>
+</details>`
+    : ''
   const body = `<main>
 <h1>${escapeHtml(post.title)}</h1>
 <div class="meta-row">
-<address>${post.author ? escapeHtml(post.author) : m.anonymous}</address>
+<address>${authorLine}</address>
 <div class="meta-actions">
 ${editLink}
 </div>
 </div>
 ${expiry}
-<div class="content">${post.html}</div>
+${toc}
+<div class="content">${contentHtml}</div>
 <div class="report-row">
 ${reportLink}
 </div>
-</main>`
-  return pageShell(post.title || 'Untitled', body, { lang, head })
+</main>
+<script>${READER_ENHANCE_JS}</script>`
+  return pageShell(post.title || 'Untitled', body, { head })
 }
 
-/** 查看密码中间页（表单 POST 回本页，无需 JS） */
-export function passwordPage(id, lang = 'zh', errorMsg = '') {
-  const m = txt(lang)
+/** 查看密码中间页（表单 POST 回本页，无需 JS）；errorKey 固定为 'pwWrong'，双语文案 */
+export function passwordPage(id, errorKey = '') {
+  const zh = TEXT.zh, en = TEXT.en
+  const err = errorKey
+    ? `<p class="err">${dual(zh[errorKey] ?? '', en[errorKey] ?? '')}</p>`
+    : ''
   const body = `<main>
 <div class="pw-card">
-<h1>${m.protectedTitle}</h1>
-<p>${m.protectedDesc}</p>
-${errorMsg ? `<p class="err">${escapeHtml(errorMsg)}</p>` : ''}
+<h1>${dual(zh.protectedTitle, en.protectedTitle)}</h1>
+<p>${dual(zh.protectedDesc, en.protectedDesc)}</p>
+${err}
 <form method="post" action="/${escapeHtml(id)}">
-<input type="password" name="pw" placeholder="${m.pwPlaceholder}" autofocus required>
-<button type="submit">${m.read}</button>
+<input type="password" name="pw" data-ph-zh="${escapeHtml(zh.pwPlaceholder)}" data-ph-en="${escapeHtml(en.pwPlaceholder)}" autofocus required>
+<button type="submit">${dual(zh.read, en.read)}</button>
 </form>
 </div>
 </main>`
-  return pageShell(m.pwPageTitle, body, {
-    lang,
+  return pageShell(zh.pwPageTitle, body, {
     head: '<meta name="robots" content="noindex, nofollow">',
   })
 }
 
-export function notFoundPage(lang = 'zh') {
-  const m = txt(lang)
+export function notFoundPage() {
+  const zh = TEXT.zh, en = TEXT.en
   const body = `<main>
 <div class="pw-card">
 <h1>404</h1>
-<p class="muted" style="font-size:14px">${m.notFoundDesc}</p>
-<a class="home-link" href="/">← ${m.backHome}</a>
+<p class="muted" style="font-size:14px">${dual(zh.notFoundDesc, en.notFoundDesc)}</p>
+<a class="home-link" href="/">← ${dual(zh.backHome, en.backHome)}</a>
 </div>
 </main>`
-  return pageShell('404', body, { lang })
+  return pageShell('404', body)
 }
 
 // ---------- 静态文档页（关于 / 服务条款 / 隐私政策） ----------
-const LAST_UPDATED = '2026-09-05'
-
 const DOCS = {
   zh: {
-    backHome: '← 返回首页',
     updated: '更新于 2026-09-05',
+    backHome: '← 返回首页',
     about: {
       title: '关于 Opus',
       sections: [
@@ -323,8 +426,8 @@ const DOCS = {
     },
   },
   en: {
-    backHome: '← Back to home',
     updated: 'Updated 2026-09-05',
+    backHome: '← Back to home',
     about: {
       title: 'About Opus',
       sections: [
@@ -359,35 +462,36 @@ const DOCS = {
         ['Contact', ['Questions about this policy: write to hello@opus.cc.']],
       ],
     },
-  }
+  },
 }
 
-function docPage(lang, doc) {
-  const m = txt(lang)
-  const sections = doc.sections
-    .map(([h, ps]) => `<h2>${escapeHtml(h)}</h2>\n${ps.map(p => `<p>${escapeHtml(p)}</p>`).join('\n')}`)
-    .join('\n')
+const docSections = doc =>
+  doc.sections.map(([h, ps]) => `<h2>${escapeHtml(h)}</h2>\n${ps.map(p => `<p>${escapeHtml(p)}</p>`).join('\n')}`).join('\n')
+
+function docPage(key) {
+  const zh = DOCS.zh[key], en = DOCS.en[key]
   const body = `<main>
-<h1>${escapeHtml(doc.title)}</h1>
+<h1>${dual(zh.title, en.title)}</h1>
 <div class="meta-row">
 <address>Opus · opus.cc</address>
-<a class="home-link" href="/">${escapeHtml(m.backHome)}</a>
+<a class="home-link" href="/">← ${dual(TEXT.zh.backHome, TEXT.en.backHome)}</a>
 </div>
-<p class="expiry">${escapeHtml(DOCS[lang]?.updated ?? DOCS.zh.updated)}</p>
-${sections}
+<p class="expiry">${dual(DOCS.zh.updated, DOCS.en.updated)}</p>
+<div class="t-zh">${docSections(zh)}</div>
+<div class="t-en" hidden>${docSections(en)}</div>
 <p class="contact">📮 <a href="mailto:hello@opus.cc">hello@opus.cc</a></p>
 </main>`
-  return pageShell(doc.title, body, { lang })
+  return pageShell(zh.title, body)
 }
 
-export function aboutPage(lang = 'zh') {
-  return docPage(lang, (DOCS[lang] ?? DOCS.zh).about)
+export function aboutPage() {
+  return docPage('about')
 }
 
-export function termsPage(lang = 'zh') {
-  return docPage(lang, (DOCS[lang] ?? DOCS.zh).terms)
+export function termsPage() {
+  return docPage('terms')
 }
 
-export function privacyPage(lang = 'zh') {
-  return docPage(lang, (DOCS[lang] ?? DOCS.zh).privacy)
+export function privacyPage() {
+  return docPage('privacy')
 }
