@@ -226,27 +226,6 @@ jobs:
 
 错误统一 `{ ok: false, error }`；发布与敏感读取有内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 Cloudflare Rate Limiting 规则）。
 
-## 缓存与抗压
-
-阅读页是**不可变内容**（只有编辑/删除/焚毁会改变它），因此页面与语言、cookie 完全解耦（服务端同时渲染中英两份文案，客户端内联脚本按 `opus-lang` cookie 切换显示，无刷新），同 URL 对所有人返回同一段字节，可安全缓存：
-
-| 内容 | Cache-Control |
-|---|---|
-| 普通文章页 | `public, max-age=10, s-maxage=300` |
-| 404 | `public, max-age=15, s-maxage=60` |
-| 关于/条款/隐私 | `public, max-age=300, s-maxage=3600` |
-| `/api/config` | `public, max-age=300` |
-| 焚文 / 密码页 / 表单响应 | `no-store`（绝不缓存） |
-
-**免费额度账**（Workers 免费版）：静态资源（首页、JS/CSS、og.png、robots/sitemap）走 Workers Static Assets 资产层交付，**不计请求、不限量**；计入每天 10 万次 Worker 调用的只有文章页与 `/api/*`。按一次冷阅读 1 次动态调用估算，免费版可支撑约 **8–10 万次文章冷阅读/天**；同一篇被反复打开的热文由缓存吸收，几乎不限量。
-
-**进一步解锁（可选，Dashboard 配置）**：在 Cloudflare Dashboard → opus.cc → Caching → Cache Rules 新建一条规则——
-
-- If: `http.host eq "opus.cc" and not starts_with(http.request.uri.path, "/api") and not starts_with(http.request.uri.path, "/edit")`
-- Then: Eligible for cache，Edge TTL = **Use cache-control header if present**（遵守上面的 s-maxage）
-
-命中后同一 PoP 的重复阅读不再触发 Worker 调用与 D1 读取，热门文章近乎无限抗压。**一致性代价**：边缘缓存无法跨 PoP 主动清除，编辑/删除后的旧内容最多残留 s-maxage（文章 5 分钟、404 1 分钟、文档 1 小时），这是用有界陈旧换容量的刻意取舍；焚文与密码页 no-store，永不受影响。
-
 ## 安全模型（三层白名单）
 
 1. **编辑器 schema**：未注册的标签/属性在解析层即被丢弃
