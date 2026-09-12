@@ -1,8 +1,8 @@
 /**
  * Cloudflare Workers 入口：D1 数据库 + Workers Static Assets 托管前端。
  * 部署：npm run build && npx wrangler d1 execute opus --remote --file schema.sql && npx wrangler deploy
- * 可选密钥（发布人机验证）：npx wrangler secret put TURNSTILE_SECRET_KEY
- * 可选站点键：wrangler.toml [vars] TURNSTILE_SITE_KEY = "0x..."
+ * 可选密钥（发布人机验证）：npx wrangler secret put SHIELD_SECRET_KEY
+ * 可选站点键：wrangler.toml [vars] SHIELD_SITE_KEY = "es_..."
  */
 import { createApp, purgeExpiredPosts } from '../server/routes.js'
 import { createD1Db } from '../server/db.js'

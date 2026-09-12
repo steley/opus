@@ -26,16 +26,49 @@ const managePw2 = ref('')
 const copied = ref(null) // null=未尝试 true/false
 const showPw = ref(false)
 const showViewPw = ref(false)
+// Edge Shield 人机验证（服务端配置密钥时启用）——页内执行、无 iframe、无 Cookie，
+// 兼容鸿蒙 ArkWeb 等国产内核（Turnstile 在其上 600010：跨源挑战 iframe 无法执行）
+const shieldSiteKey = ref(null)
+const shieldToken = ref('')
+const shieldEl = ref(null)
+const shieldResolve = ref(null)
+const shieldReject = ref(null)
+const shieldBusy = ref(false)
+const shieldError = ref('')
 
-// Turnstile 人机验证（仅当服务端配置了密钥对时启用）
-const tsSiteKey = ref(null)
-const tsToken = ref('')
-const tsEl = ref(null)
-let tsWidgetId = null
-const tsResolve = ref(null)
-const tsReject = ref(null)
+/** 接入 widget：先插入 div（data-attr 回调指向 window 具名函数），再加载脚本由其扫描渲染。
+ *  每次都重挂脚本（浏览器有缓存，近乎即时），保证弹窗重开时必然重新扫描渲染。 */
+async function loadShield() {
+  try {
+    window.__esOnToken = token => { shieldToken.value = token; shieldError.value = ''; shieldResolve.value?.(token) }
+    window.__esOnError = code => { shieldToken.value = ''; shieldError.value = String(code || 'error'); shieldReject.value?.(new Error('shield-error')) }
+    window.__esOnExpired = () => { shieldToken.value = ''; shieldReject.value?.(new Error('shield-expired')) }
+    if (!shieldEl.value) return
+    shieldEl.value.innerHTML =
+      `<div class="edge-shield" data-sitekey="${shieldSiteKey.value}"` +
+      ` data-callback="__esOnToken" data-error-callback="__esOnError" data-expired-callback="__esOnExpired"></div>`
+    document.querySelector('script[data-edge-shield]')?.remove()
+    try { delete window.edgeShield } catch { /* 忽略 */ }
+    await new Promise((resolve, reject) => {
+      const s = document.createElement('script')
+      s.src = 'https://shield.edge.network/api.js'
+      s.dataset.edgeShield = '1'
+      s.onload = resolve
+      s.onerror = () => reject(new Error('script-load'))
+      document.head.appendChild(s)
+    })
+    shieldError.value = ''
+  } catch {
+    shieldError.value = 'load'
+  }
+}
 
-const tsBusy = ref(false)
+/** 重试：清掉脚本与 widget 重挂一遍 */
+function retryShield() {
+  shieldError.value = ''
+  shieldToken.value = ''
+  loadShield()
+}
 
 // 移动端触屏/键盘遮挡缓解：弹窗内任一输入框获得焦点时，把该栏滚进 dialog 可视范围，
 // 避免系统键盘把正在输入的栏(或确认按钮)盖在屏幕外。dialog 与 .overlay 均已可滚动。
@@ -54,37 +87,20 @@ onMounted(async () => {
   document.addEventListener('focusin', onDialogFocus)
   try {
     const cfg = await getConfig()
-    tsSiteKey.value = cfg.turnstileSiteKey ?? null
+    shieldSiteKey.value = cfg.shieldSiteKey ?? null
   } catch { /* 配置读取失败视为未启用 */ }
 
-  if (tsSiteKey.value) {
-    // Turnstile 托管模式：打开发布框即由 CF 后台 challenge，自动/低风险直接产出 token。
-    // 避免“点确认才现场 execute + 交互 widget + 二次确认”——发布只需一次确认。
-    try {
-      if (!window.turnstile) {
-        await new Promise((resolve, reject) => {
-          const s = document.createElement('script')
-          s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
-          s.onload = resolve
-          s.onerror = reject
-          document.head.appendChild(s)
-        })
-      }
-      // 默认托管渲染（无 execution）：CF 自动执行判定并回调 token；已判定无需交互则无感。
-      tsWidgetId = window.turnstile.render(tsEl.value, {
-        sitekey: tsSiteKey.value,
-        callback: token => { tsToken.value = token; tsResolve.value?.(token) },
-        'error-callback': () => tsReject.value?.(new Error('ts-error')),
-        'expired-callback': () => { tsToken.value = ''; tsReject.value?.(new Error('ts-expired')) },
-        theme: document.documentElement.classList.contains('dark') ? 'dark' : 'light',
-      })
-    } catch { /* 脚本加载失败时提交会被服务端 403，错误会显示 */ }
+  if (shieldSiteKey.value) {
+    // Edge Shield：打开弹窗即在页内跑 PoW + 风险评分，token 就绪后发布只需一次确认
+    loadShield()
   }
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('focusin', onDialogFocus)
-  try { if (tsWidgetId !== null) window.turnstile.remove(tsWidgetId) } catch { /* 忽略 */ }
+  delete window.__esOnToken
+  delete window.__esOnError
+  delete window.__esOnExpired
 })
 
 const published = computed(() => !!props.publishedUrl)
@@ -108,25 +124,31 @@ const valid = computed(() => {
 })
 
 async function confirm() {
-  if (!valid.value || props.loading || tsBusy.value) return
+  if (!valid.value || props.loading || shieldBusy.value) return
 
-  let turnstileToken = tsToken.value // 托管模式打开弹窗即已产出 token（快）
-  if (tsSiteKey.value && !turnstileToken) {
-    // 兜底：托管未及时返回/已过期，此处才现场 execute（正常情况不会走到）
-    tsBusy.value = true
+  // token：回调产出，或兜底按 name 读 widget 的隐藏域（文档约定字段名 edge-shield-response；
+  // 注意它是 name 不是 class，且 widget 可能把它挂到任意祖先/表单里，用属性选择器全局找）
+  let shieldTokenVal = shieldToken.value
+    || document.querySelector('[name="edge-shield-response"]')?.value
+    || ''
+  if (shieldSiteKey.value && !shieldTokenVal) {
+    // PoW 在后台线程计算中（手机约 1-3 秒）：等待期间按钮显示「发布中…」，超时前最后一读隐藏域
+    shieldBusy.value = true
     try {
-      turnstileToken = await new Promise((resolve, reject) => {
-        tsResolve.value = resolve
-        tsReject.value = reject
-        window.turnstile.reset(tsWidgetId)
-        window.turnstile.execute(tsWidgetId)
-        setTimeout(() => reject(new Error('ts-timeout')), 20_000)
+      shieldTokenVal = await new Promise((resolve, reject) => {
+        shieldResolve.value = resolve
+        shieldReject.value = reject
+        setTimeout(() => reject(new Error('shield-timeout')), 15_000)
       })
-    } catch {
-      tsBusy.value = false
-      return
+    } catch (e) {
+      shieldTokenVal = document.querySelector('[name="edge-shield-response"]')?.value || ''
+      if (!shieldTokenVal) {
+        shieldBusy.value = false
+        if (!shieldError.value) shieldError.value = e.message === 'shield-timeout' ? 'timeout' : 'fail'
+        return
+      }
     } finally {
-      tsBusy.value = false
+      shieldBusy.value = false
     }
   }
 
@@ -135,7 +157,7 @@ async function confirm() {
     expiry: expiry.value,
     viewPassword: viewPw.value,
     managePassword: managePw.value,
-    turnstileToken,
+    shieldToken: shieldTokenVal,
   })
 }
 
@@ -205,8 +227,12 @@ function fmtDate(ms) {
           <PwEye :show="showPw" @toggle="showPw = !showPw" />
         </div>
 
-        <!-- Turnstile 人机验证容器（服务端配置密钥后显示） -->
-        <div ref="tsEl" class="ts-box"></div>
+        <!-- Edge Shield 人机验证容器（服务端配置密钥后显示） -->
+        <div ref="shieldEl" class="ts-box"></div>
+        <div v-if="shieldError" class="ts-error">
+          <p class="hint bad">{{ t('tsFailHint') }} <span class="ts-code">{{ shieldError }}</span></p>
+          <button type="button" class="ts-retry" @click="retryShield">{{ t('tsRetry') }}</button>
+        </div>
 
         <p class="edit-note">{{ t('manageNote') }}</p>
 
@@ -215,8 +241,8 @@ function fmtDate(ms) {
 
         <div class="dialog-actions">
           <button class="btn ghost" @click="emit('close')">{{ t('back') }}</button>
-          <button class="btn primary" :disabled="!valid || loading" @click="confirm">
-            {{ loading ? t('publishing') : t('confirm') }}
+          <button class="btn primary" :disabled="!valid || loading || shieldBusy" @click="confirm">
+            {{ loading || shieldBusy ? t('publishing') : t('confirm') }}
           </button>
         </div>
       </template>

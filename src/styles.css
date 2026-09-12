@@ -524,6 +524,21 @@ html, body {
 }
 .pw-eye:hover { color: var(--accent); }
 
+/* Turnstile 错误提示与重试 */
+.ts-error { margin-top: 8px; }
+.ts-error .hint { margin: 0 0 6px; }
+.ts-code { color: var(--muted); font-size: 12px; }
+.ts-retry {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.ts-retry:hover { color: var(--ink); }
+
 .edit-note {
   font-size: 12.5px;
   line-height: 1.6;

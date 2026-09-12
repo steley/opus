@@ -108,10 +108,14 @@ export function createApp(db, registerStatic = null, env = {}) {
 
   // ---------- 公开配置（前端读取人机验证站点密钥；两者都配置才启用） ----------
   app.get('/api/config', c => {
-    c.header('Cache-Control', 'public, max-age=300')
+    // 不缓存：配置仅在发布时读取（低频），缓存会在换 key/部署时让浏览器拿到旧值造成「验证消失」的假象
+    c.header('Cache-Control', 'no-store')
+    if (env.SHIELD_SITE_KEY && !env.SHIELD_SECRET_KEY) {
+      console.error(JSON.stringify({ level: 'warn', type: 'shield_secret_missing', hint: 'SHIELD_SITE_KEY 已配置但缺少 SHIELD_SECRET_KEY，人机验证未启用且发布不设防' }))
+    }
     return c.json({
       ok: true,
-      turnstileSiteKey: env.TURNSTILE_SECRET_KEY && env.TURNSTILE_SITE_KEY ? env.TURNSTILE_SITE_KEY : null,
+      shieldSiteKey: env.SHIELD_SECRET_KEY && env.SHIELD_SITE_KEY ? env.SHIELD_SITE_KEY : null,
     })
   })
 
@@ -120,19 +124,19 @@ export function createApp(db, registerStatic = null, env = {}) {
     const body = await c.req.json().catch(() => null)
     if (!body) return c.json({ ok: false, error: 'invalid body' }, 400)
 
-    // 人机验证：仅在配置 Turnstile 时启用（下方分支）；未配置则不校验（见内注释）
-    if (env.TURNSTILE_SECRET_KEY) {
+    // 人机验证：仅在配置 Edge Shield 时启用（下方分支）；未配置则不校验（见内注释）
+    if (env.SHIELD_SECRET_KEY) {
       const ip = clientIp(c)
-      const ok = await verifyTurnstile(env.TURNSTILE_SECRET_KEY, String(body.turnstileToken ?? ''), ip)
-      if (!ok) {
+      const vr = await verifyShield(env.SHIELD_SECRET_KEY, String(body.shieldToken ?? ''))
+      if (!vr.ok) {
         await sleep(300)
-        console.error(JSON.stringify({ level: 'warn', type: 'turnstile_failed', ip, path: c.req.path }))
-        return c.json({ ok: false, error: 'turnstile failed' }, 403)
+        console.error(JSON.stringify({ level: 'warn', type: 'shield_failed', ip, path: c.req.path, score: vr.score, codes: vr.codes }))
+        return c.json({ ok: false, error: 'verification failed' }, 403)
       }
     }
-    // 若未配置 TURNSTILE_SECRET_KEY（如 VPS 裸跑/误删 key），则不做人机验证、直接放行。
-    // ⚠️ 注意：无 Turnstile 的实例将不再有抗脚本防护，生产必须配置 Turnstile 后再提供发布，
-    // 否则脚本可直接 POST /api/posts（此前算术挑战已删除：脆弱且前端未接通）。
+    // 若未配置 SHIELD_SECRET_KEY（如 VPS 裸跑/误删 key），则不做人机验证、直接放行。
+    // ⚠️ 注意：无 Edge Shield 的实例将不再有抗脚本防护，生产必须配置后再提供发布，
+    // 否则脚本可直接 POST /api/posts。
 
     const check = validatePublish(body)
     if (check.error) return c.json({ ok: false, error: check.error }, 400)
@@ -307,21 +311,24 @@ export function createApp(db, registerStatic = null, env = {}) {
 
 // ---------- 辅助 ----------
 
-/** Cloudflare Turnstile 服务端校验 */
-async function verifyTurnstile(secret, token, ip) {
-  if (!token) return false
+/** Edge Shield 服务端校验：POST 其 siteverify，响应格式同 Turnstile（success/error-codes）外加 1-100 人性分 score。
+ *  返回 { ok, score, codes }——score/codes 进结构化日志，便于远程诊断（如 invalid-input-secret / timeout-or-duplicate）。 */
+async function verifyShield(secret, token) {
+  if (!token) return { ok: false, score: null, codes: ['missing-token'] }
   try {
-    const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    const res = await fetch('https://shield.edge.network/siteverify', {
       method: 'POST',
       headers: { 'content-type': 'application/x-www-form-urlencoded' },
-      // 不传 remoteip：自定义域名经 CF 反代时 x-forwarded-for 首段未必是可靠公网 IP，
-      // 传错反而会让 siteverify 失败。Turnstile 官方不要求该参数（仅绑定来访 IP 用）。
       body: new URLSearchParams({ secret, response: token }),
     })
     const data = await res.json()
-    return data.success === true
+    return {
+      ok: data.success === true,
+      score: typeof data.score === 'number' ? data.score : null,
+      codes: data['error-codes'] ?? [],
+    }
   } catch {
-    return false
+    return { ok: false, score: null, codes: ['siteverify-unreachable'] }
   }
 }
 

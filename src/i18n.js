@@ -78,6 +78,8 @@ const messages = {
     manageNote: '管理密码拥有编辑和删除本文的权限，请妥善保管，丢失后无法找回。',
     pwShow: '显示明文',
     pwHide: '隐藏明文',
+    tsFailHint: '人机验证未完成或超时。请点下方「重试」；若反复失败，请刷新页面或稍后再试。',
+    tsRetry: '↻ 重试人机验证',
     back: '返回',
     confirm: '确认',
     publishing: '发布中…',
@@ -182,6 +184,7 @@ const messages = {
     manageNote: 'The manage password grants permission to edit and delete this article. Keep it safe — it cannot be recovered.',
     pwShow: 'Show password',
     pwHide: 'Hide password',
+    tsFailHint: 'Verification did not complete or timed out. Tap "Retry" below; if it keeps failing, refresh the page or try again later.',
     back: 'Back',
     confirm: 'Confirm',
     publishing: 'Publishing…',
@@ -232,7 +235,7 @@ const API_ERRORS = {
     'invalid body': '请求无效',
     'id space exhausted': '链接 ID 空间暂时不可用，请重试',
     'internal error': '服务器内部错误',
-    'turnstile failed': '人机验证未通过，请刷新后重试',
+    'verification failed': '人机验证未通过，请重试',
   },
   en: {
     'empty content': 'Content is empty',
@@ -245,7 +248,7 @@ const API_ERRORS = {
     'invalid body': 'Invalid request body',
     'id space exhausted': 'Link ID space temporarily unavailable, please retry',
     'internal error': 'Internal server error',
-    'turnstile failed': 'Turnstile verification failed, please retry',
+    'verification failed': 'Human verification failed, please retry',
   },
 }
 

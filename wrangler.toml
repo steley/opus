@@ -29,6 +29,6 @@ enabled = true
 head_sampling_rate = 1
 persist = true
 
-# Turnstile
+# Edge Shield（发布人机验证；secret 用 npx wrangler secret put SHIELD_SECRET_KEY）
 [vars]
-TURNSTILE_SITE_KEY = "0x4AAAAAACVoBh6na3LzjEoD"
+SHIELD_SITE_KEY = "es_8428c31b14e0b8e6d76c7382c0633aeb"

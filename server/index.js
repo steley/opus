@@ -2,7 +2,7 @@
  * VPS / 自托管入口：Node + 内置 SQLite（node:sqlite）+ 静态托管 dist/。
  * 运行：npm run build && npm run start   （默认 http://localhost:8787）
  * 数据库文件路径用环境变量 WRITE_DB 指定，默认 ./opus.db
- * 可选环境变量：TURNSTILE_SITE_KEY / TURNSTILE_SECRET_KEY（发布人机验证）
+ * 可选环境变量：SHIELD_SITE_KEY / SHIELD_SECRET_KEY（发布人机验证，Edge Shield）
  */
 import { readFileSync } from 'node:fs'
 import { serve } from '@hono/node-server'

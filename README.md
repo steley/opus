@@ -36,6 +36,7 @@ Slogan：**落笔，即发布。** / *Write. Publish. Done.*（opus.cc）
 - 有效期：惰性过期删除——过期后首次被访问时物理删除并 404（无需定时任务，两种运行时通用）
 - 查看密码：阅读页出现密码表单（无 JS 流程），错误密码 401 + 延迟响应防爆破
 - 管理密码：编辑与删除的唯一凭证，PBKDF2-SHA256 加盐哈希存储
+- 人机验证：可配置启用 Edge Shield（页内 PoW，全浏览器兼容），配置方法见「运维备忘」
 
 ### 阅读页
 - 长文自动目录：正文 ≥3 个 h2/h3 时在正文前渲染折叠目录（`<details>` 原生折叠，零 JS），标题自动注入锚点
@@ -199,13 +200,22 @@ jobs:
 
 ## 运维备忘（上线/生产）
 
-**安全注意**：`TURNSTILE_SECRET_KEY` 通过 `npx wrangler secret put TURNSTILE_SECRET_KEY` 存储，勿写入仓库/README。`TURNSTILE_SITE_KEY`（公钥）在 `wrangler.toml`，公开无碍。库内仅含公钥与 D1 database_id，无泄露 secret。
+**安全注意**：`SHIELD_SECRET_KEY` 通过 `npx wrangler secret put SHIELD_SECRET_KEY` 存储，勿写入仓库/README。`SHIELD_SITE_KEY`（公钥）在 `wrangler.toml`，公开无碍。库内仅含公钥与 D1 database_id，无泄露 secret。
 
 **关键项**：
-- 发布人机验证启用条件：`TURNSTILE_SECRET_KEY` 与 `TURNSTILE_SITE_KEY` 都配置才启用（`/api/config` 会返回 site key 与否）。若删除 secret 而仅剩 site key，发布将不做人机验证（脚本可直接 POST /api/posts）——生产必须保证两者都在。
+- **发布人机验证（Edge Shield，单套）**：页内 PoW + 1–100 人性分，无 iframe、无 Cookie、无第三方追踪，
+  兼容鸿蒙 ArkWeb 等国产内核。曾用 Cloudflare Turnstile，其挑战依赖跨源 iframe 执行，在 ArkWeb 上
+  报 600010（挑战执行失败）且无解，故弃用。
+  配置：在 edge.network 控制台创建 widget 拿到一对密钥 → site key（`es_…`）写入 `wrangler.toml` 的
+  `[vars] SHIELD_SITE_KEY`；secret（`es_secret_…`）执行 `npx wrangler secret put SHIELD_SECRET_KEY`。
+  VPS 用环境变量同名配置。两者**缺一即整体停用**（此时发布不设防，日志会出现
+  `shield_secret_missing` 告警）——生产必须保证两者都在。
+- **验证评分策略**：siteverify 响应含 1–100 人性分（score），当前 `success === true` 即放行；
+  如需收紧可在 `verifyShield` 加 `score >= N` 判断。失败日志带 `score` 与 `codes` 字段，
+  供 `wrangler tail` / Logpush 检索诊断。
 - D1 索引：`db-index.sql` 为 `posts(expires_at)/(created_at)` 建索引（幂等）。新库初始化后执行 `npx wrangler d1 execute opus --remote --file db-index.sql`；`schema.sql` 本身不含索引。
 - `npm test`：`node:test` 跑 sanitize 净化回归（锁 XSS 关键路径）；修改 `sanitize.js` 白名单后必须跑。
-- 结构化日志：routes 对 onError / Turnstile 失败 / 限流命中等输出 JSON 日志（含 type/path/ip），可用 `wrangler tail` / Logpush 按 `type:` 字段检索排查。
+- 结构化日志：routes 对 onError / 人机验证失败 / 限流命中等输出 JSON 日志（含 type/path/ip/score/codes），可用 `wrangler tail` / Logpush 按 `type:` 字段检索排查。
 - 限流用内存 Map（免费版单隔离有效）；若未来多 region/扩容需 KV 承接或 paid plan，届时再替换。
 - 阅后即焚 / 编辑 / 删除路径见下方 API，均有原子删除 / 失效语义，勿为这类文章加共享缓存。
 
@@ -213,7 +223,7 @@ jobs:
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/posts` | 发布：`{ title, author, html, json, burnAfterRead, expiry('1h'|'12h'|'24h'|'1d'|'15d'|'30d'|'90d'|'180d'|'365d'，默认 '30d'), viewPassword?, managePassword }` → `{ id, url, expiresAt }` |
+| POST | `/api/posts` | 发布：`{ title, author, html, json, burnAfterRead, expiry('1h'|'12h'|'24h'|'1d'|'15d'|'30d'|'90d'|'180d'|'365d'，默认 '30d'), viewPassword?, managePassword, shieldToken?（启用人机验证时必带） }` → `{ id, url, expiresAt }` |
 | GET | `/api/posts/:id` | 公开读取（有查看密码时 401） |
 | POST | `/api/posts/:id/read` | `{ viewPassword }` 带密码读取；**阅后即焚/已过期在成功访问时物理删除** |
 | POST | `/api/posts/:id/edit-read` | `{ managePassword }` 编辑器读取（不触发焚毁） |
