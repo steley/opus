@@ -14,7 +14,6 @@ const TEXT = {
     editEntry: '✎ 编辑',
     editTitle: '输入管理密码进入编辑',
     reportLink: '举报',
-    reportSubjectPrefix: '[Opus 举报] ',
     labels: { about: '关于', terms: '服务条款', privacy: '隐私政策' },
     notFoundDesc: '文章不存在，或已被焚毁/过期删除。',
     backHome: '返回首页',
@@ -32,7 +31,6 @@ const TEXT = {
     editEntry: '✎ Edit',
     editTitle: 'Enter manage password to edit',
     reportLink: 'Report',
-    reportSubjectPrefix: '[Opus Report] ',
     labels: { about: 'About', terms: 'Terms', privacy: 'Privacy' },
     notFoundDesc: 'This article does not exist, or was burned / expired.',
     backHome: 'Back to home',
@@ -148,8 +146,6 @@ const LANG_JS = `
     var ps=document.querySelectorAll('[data-ph-zh]');
     for(i=0;i<ps.length;i++) ps[i].placeholder=ps[i].getAttribute(lang==='zh'?'data-ph-zh':'data-ph-en')||'';
     var b=document.getElementById('fab-lang'); if(b) b.textContent=lang==='zh'?'EN':'中';
-    var rl=document.querySelector('.report-link');
-    if(rl){ var s=rl.getAttribute(lang==='zh'?'data-subj-zh':'data-subj-en'); if(s) rl.setAttribute('href','mailto:hello@opus.cc?subject='+encodeURIComponent(s)); }
   }
   apply(readLang());
   var btn=document.getElementById('fab-lang');
@@ -324,8 +320,10 @@ export function articlePage(post, origin = '') {
     ? `<p class="${expiryCls} t-zh">${rem(zh)}</p><p class="${expiryCls} t-en" hidden>${rem(en)}</p>${dateTimeJs}`
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(zh.editTitle)} / ${escapeHtml(en.editTitle)}">${dual(zh.editEntry, en.editEntry)}</a>`
-  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent(zh.reportSubjectPrefix + url)}`
-  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" data-subj-zh="${escapeHtml(zh.reportSubjectPrefix + url)}" data-subj-en="${escapeHtml(en.reportSubjectPrefix + url)}" rel="noopener noreferrer">${dual(zh.reportLink, en.reportLink)}</a>`
+  // 举报邮件 subject 固定英文 [Opus Report]：收件人（站点方）按此前缀搜索/过滤，全英文可用一种输入法直接检索，
+  // 与界面语言无关（刻意不随 opus-lang 切换，勿改回跟随语言）。
+  const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent('[Opus Report] ' + url)}`
+  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${dual(zh.reportLink, en.reportLink)}</a>`
   const authorLine = post.author ? escapeHtml(post.author) : zh.anonymous
   // 长文目录：≥3 个 h2/h3 才显示（<details> 原生折叠，零 JS）
   const { html: contentHtml, items: tocItems } = buildToc(post.html)
