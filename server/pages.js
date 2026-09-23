@@ -148,6 +148,8 @@ const LANG_JS = `
     var ps=document.querySelectorAll('[data-ph-zh]');
     for(i=0;i<ps.length;i++) ps[i].placeholder=ps[i].getAttribute(lang==='zh'?'data-ph-zh':'data-ph-en')||'';
     var b=document.getElementById('fab-lang'); if(b) b.textContent=lang==='zh'?'EN':'中';
+    var rl=document.querySelector('.report-link');
+    if(rl){ var s=rl.getAttribute(lang==='zh'?'data-subj-zh':'data-subj-en'); if(s) rl.setAttribute('href','mailto:hello@opus.cc?subject='+encodeURIComponent(s)); }
   }
   apply(readLang());
   var btn=document.getElementById('fab-lang');
@@ -323,7 +325,7 @@ export function articlePage(post, origin = '') {
     : ''
   const editLink = `<a class="edit-link" href="/edit/${escapeHtml(post.id)}" title="${escapeHtml(zh.editTitle)} / ${escapeHtml(en.editTitle)}">${dual(zh.editEntry, en.editEntry)}</a>`
   const reportHref = `mailto:hello@opus.cc?subject=${encodeURIComponent(zh.reportSubjectPrefix + url)}`
-  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" rel="noopener noreferrer">${dual(zh.reportLink, en.reportLink)}</a>`
+  const reportLink = `<a class="report-link" href="${escapeHtml(reportHref)}" data-subj-zh="${escapeHtml(zh.reportSubjectPrefix + url)}" data-subj-en="${escapeHtml(en.reportSubjectPrefix + url)}" rel="noopener noreferrer">${dual(zh.reportLink, en.reportLink)}</a>`
   const authorLine = post.author ? escapeHtml(post.author) : zh.anonymous
   // 长文目录：≥3 个 h2/h3 才显示（<details> 原生折叠，零 JS）
   const { html: contentHtml, items: tocItems } = buildToc(post.html)
