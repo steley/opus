@@ -17,6 +17,7 @@ export const whitelist = {
   /** 图片直链域名 */
   imageHosts: [
     'i.imgur.com',
+    'img.opus.cc'
   ],
 
   /** 视频直链域名（渲染为 <video>）——当前为空，视频仅支持下方平台嵌入 */
@@ -30,6 +31,7 @@ export const whitelist = {
 
   /** 域名展示名（发布框"白名单"区显示用） */
   hostNames: {
+    'img.opus.cc': 'Opus',
     'i.imgur.com': 'Imgur',
     'www.youtube.com': 'YouTube',
     'www.youtube-nocookie.com': 'YouTube',
