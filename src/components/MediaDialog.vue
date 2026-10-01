@@ -38,8 +38,9 @@ const hostGroups = computed(() => {
 const hintText = computed(() => {
   if (!result.value) return ''
   if (result.value.ok) {
+    // 函数形式替换：embed 是用户输入的 URL，字符串形式会被 $&/$' 等替换模式污染
     return result.value.kind === 'embed'
-      ? t('okEmbed').replace('{url}', result.value.embed)
+      ? t('okEmbed').replace('{url}', () => result.value.embed)
       : t('okPass')
   }
   return mediaErrorText(result.value.error, props.mode)

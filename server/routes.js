@@ -79,6 +79,10 @@ async function purgeIfExpired(db, post) {
 export function createApp(db, registerStatic = null, env = {}) {
   const app = new Hono()
 
+  // Edge Shield 人机验证总开关：两把 key 必须成对配置。
+  // /api/config 的 sitekey 下发与发布 gate 共用此常量，防止两处条件漂移
+  const shieldEnabled = !!(env.SHIELD_SITE_KEY && env.SHIELD_SECRET_KEY)
+
   // 压缩：Node 运行时启用；Workers 边缘自带压缩，跳过避免双重处理
   if (db.kind !== 'd1') app.use('*', compress())
 
@@ -110,12 +114,16 @@ export function createApp(db, registerStatic = null, env = {}) {
   app.get('/api/config', c => {
     // 不缓存：配置仅在发布时读取（低频），缓存会在换 key/部署时让浏览器拿到旧值造成「验证消失」的假象
     c.header('Cache-Control', 'no-store')
+    // 两把 key 必须成对配置才启用验证；缺任一都告警。发布端 gate（POST /api/posts）用同一条件，
+    // 避免「只配了 secret」时客户端拿不到 sitekey、服务端却校验 token 的静默全 403
     if (env.SHIELD_SITE_KEY && !env.SHIELD_SECRET_KEY) {
       console.error(JSON.stringify({ level: 'warn', type: 'shield_secret_missing', hint: 'SHIELD_SITE_KEY 已配置但缺少 SHIELD_SECRET_KEY，人机验证未启用且发布不设防' }))
+    } else if (env.SHIELD_SECRET_KEY && !env.SHIELD_SITE_KEY) {
+      console.error(JSON.stringify({ level: 'warn', type: 'shield_sitekey_missing', hint: 'SHIELD_SECRET_KEY 已配置但缺少 SHIELD_SITE_KEY，人机验证未启用且发布不设防' }))
     }
     return c.json({
       ok: true,
-      shieldSiteKey: env.SHIELD_SECRET_KEY && env.SHIELD_SITE_KEY ? env.SHIELD_SITE_KEY : null,
+      shieldSiteKey: shieldEnabled ? env.SHIELD_SITE_KEY : null,
     })
   })
 
@@ -124,8 +132,8 @@ export function createApp(db, registerStatic = null, env = {}) {
     const body = await c.req.json().catch(() => null)
     if (!body) return c.json({ ok: false, error: 'invalid body' }, 400)
 
-    // 人机验证：仅在配置 Edge Shield 时启用（下方分支）；未配置则不校验（见内注释）
-    if (env.SHIELD_SECRET_KEY) {
+    // 人机验证：两把 key 成对配置才启用（与 /api/config 下发 sitekey 的条件一致；缺任一只告警不拦截）
+    if (shieldEnabled) {
       const ip = clientIp(c)
       const vr = await verifyShield(env.SHIELD_SECRET_KEY, String(body.shieldToken ?? ''))
       if (!vr.ok) {
@@ -134,8 +142,8 @@ export function createApp(db, registerStatic = null, env = {}) {
         return c.json({ ok: false, error: 'verification failed' }, 403)
       }
     }
-    // 若未配置 SHIELD_SECRET_KEY（如 VPS 裸跑/误删 key），则不做人机验证、直接放行。
-    // ⚠️ 注意：无 Edge Shield 的实例将不再有抗脚本防护，生产必须配置后再提供发布，
+    // 若两把 key 未成对配置（任一缺失，如 VPS 裸跑/误删 key），则不做人机验证、直接放行。
+    // ⚠️ 注意：无 Edge Shield 的实例将不再有抗脚本防护，生产必须成对配置后再提供发布，
     // 否则脚本可直接 POST /api/posts。
 
     const check = validatePublish(body)

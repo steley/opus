@@ -249,3 +249,50 @@ test('普通文章页下发可缓存头且无 Vary；焚文/密码页 no-store',
   assert.equal(pwPage.status, 200)
   assert.equal(pwPage.headers.get('cache-control'), 'no-store')
 })
+
+// ---------- Shield 门控一致性 ----------
+// /api/config 只在两把 key 成对配置时下发 sitekey，发布 gate 必须用同一条件，
+// 否则「只配 secret」时客户端无 sitekey、服务端却校验 token → 静默全 403。
+test('只配 SHIELD_SECRET_KEY 缺 sitekey：发布不拦截、config 不下发、对称告警', async () => {
+  const db = createSqliteDb(':memory:')
+  const app = createApp(db, null, { SHIELD_SECRET_KEY: 'es_secret_test' })
+  // 捕获结构化告警，断言缺 sitekey 方向有日志（与 shield_secret_missing 对称）
+  const logs = []
+  const realErr = console.error
+  console.error = (...args) => { logs.push(args.join(' ')) }
+  try {
+    const { res, data } = await publish({ app })
+    assert.equal(res.status, 200, `secret-only 配置不应触发 token 校验: ${JSON.stringify(data)}`)
+    assert.equal(data.ok, true)
+
+    const cfg = await app.request('/api/config')
+    assert.equal((await cfg.json()).shieldSiteKey, null, '缺 sitekey 时不下发')
+  } finally {
+    console.error = realErr
+  }
+  assert.ok(logs.some(l => l.includes('shield_sitekey_missing')), `应输出 shield_sitekey_missing 告警: ${logs.join('\n')}`)
+})
+
+test('两把 key 成对配置：无/坏 token 403，siteverify 通过则放行', async () => {
+  const db = createSqliteDb(':memory:')
+  const app = createApp(db, null, { SHIELD_SITE_KEY: 'es_site', SHIELD_SECRET_KEY: 'es_secret' })
+  const realFetch = globalThis.fetch
+  globalThis.fetch = async (url) => {
+    assert.ok(String(url).includes('siteverify'), '应调用 siteverify')
+    return new Response(JSON.stringify({ success: true, score: 0.9 }), { headers: { 'content-type': 'application/json' } })
+  }
+  try {
+    const denied = await app.request('/api/posts', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ title: 'hi', html: '<p>x</p>', json: [], managePassword: 'managepass' }),
+    })
+    assert.equal(denied.status, 403, '无 token 应被拒')
+
+    const ok = await publish({ app }, { shieldToken: 'tok' })
+    assert.equal(ok.res.status, 200, 'siteverify 成功应放行')
+    assert.equal(ok.data.ok, true)
+  } finally {
+    globalThis.fetch = realFetch
+  }
+})

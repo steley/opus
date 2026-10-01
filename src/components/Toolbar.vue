@@ -1,11 +1,25 @@
 <script setup>
+import { onBeforeUnmount, onMounted, ref } from 'vue'
 import ColorMenu from './ColorMenu.vue'
 import { t } from '../i18n.js'
 
-defineProps({
+const props = defineProps({
   editor: { type: Object, required: true },
 })
 defineEmits(['open-media'])
+
+// 同 ColorMenu：TipTap 的编辑器状态对 Vue 不可见，须订阅事务驱动高亮重算，
+// 否则 isActive(...) 只在挂载时求值一次，光标移动后加粗/标题等高亮不再更新
+const tick = ref(0)
+const onTx = () => { tick.value++ }
+onMounted(() => props.editor.on('transaction', onTx))
+onBeforeUnmount(() => props.editor.off('transaction', onTx))
+
+/** 模板经由本函数读取激活态：读 tick 建立响应依赖，事务后重渲染 */
+function active(name, attrs) {
+  tick.value
+  return props.editor.isActive(name, attrs)
+}
 </script>
 
 <template>
@@ -19,39 +33,39 @@ defineEmits(['open-media'])
 
     <span class="sep" />
 
-    <button class="tbtn txt" :class="{ on: editor.isActive('heading', { level: 2 }) }" :title="t('h2')" @click="editor.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
-    <button class="tbtn txt" :class="{ on: editor.isActive('heading', { level: 3 }) }" :title="t('h3')" @click="editor.chain().focus().toggleHeading({ level: 3 }).run()">H3</button>
-    <button class="tbtn txt" :class="{ on: editor.isActive('paragraph') && !editor.isActive('heading') }" :title="t('paragraph')" @click="editor.chain().focus().setParagraph().run()">P</button>
+    <button class="tbtn txt" :class="{ on: active('heading', { level: 2 }) }" :title="t('h2')" @click="editor.chain().focus().toggleHeading({ level: 2 }).run()">H2</button>
+    <button class="tbtn txt" :class="{ on: active('heading', { level: 3 }) }" :title="t('h3')" @click="editor.chain().focus().toggleHeading({ level: 3 }).run()">H3</button>
+    <button class="tbtn txt" :class="{ on: active('paragraph') && !active('heading') }" :title="t('paragraph')" @click="editor.chain().focus().setParagraph().run()">P</button>
 
     <span class="sep" />
 
-    <button class="tbtn txt b" :class="{ on: editor.isActive('bold') }" :title="t('bold')" @click="editor.chain().focus().toggleBold().run()">B</button>
-    <button class="tbtn txt i" :class="{ on: editor.isActive('italic') }" :title="t('italic')" @click="editor.chain().focus().toggleItalic().run()">I</button>
-    <button class="tbtn txt u" :class="{ on: editor.isActive('underline') }" :title="t('underline')" @click="editor.chain().focus().toggleUnderline().run()">U</button>
-    <button class="tbtn txt s" :class="{ on: editor.isActive('strike') }" :title="t('strike')" @click="editor.chain().focus().toggleStrike().run()">S</button>
-    <button class="tbtn txt code" :class="{ on: editor.isActive('code') }" :title="t('code')" @click="editor.chain().focus().toggleCode().run()">&lt;/&gt;</button>
+    <button class="tbtn txt b" :class="{ on: active('bold') }" :title="t('bold')" @click="editor.chain().focus().toggleBold().run()">B</button>
+    <button class="tbtn txt i" :class="{ on: active('italic') }" :title="t('italic')" @click="editor.chain().focus().toggleItalic().run()">I</button>
+    <button class="tbtn txt u" :class="{ on: active('underline') }" :title="t('underline')" @click="editor.chain().focus().toggleUnderline().run()">U</button>
+    <button class="tbtn txt s" :class="{ on: active('strike') }" :title="t('strike')" @click="editor.chain().focus().toggleStrike().run()">S</button>
+    <button class="tbtn txt code" :class="{ on: active('code') }" :title="t('code')" @click="editor.chain().focus().toggleCode().run()">&lt;/&gt;</button>
 
     <ColorMenu :editor="editor" type="color" />
     <ColorMenu :editor="editor" type="bg" />
 
     <span class="sep" />
 
-    <button class="tbtn" :class="{ on: editor.isActive('orderedList') }" :title="t('ol')" @click="editor.chain().focus().toggleOrderedList().run()">
+    <button class="tbtn" :class="{ on: active('orderedList') }" :title="t('ol')" @click="editor.chain().focus().toggleOrderedList().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 4h7M6.5 8h7M6.5 12h7" /><text x="1" y="5.8" font-size="5.5" font-weight="600" fill="currentColor" stroke="none">1</text><text x="1" y="9.8" font-size="5.5" font-weight="600" fill="currentColor" stroke="none">2</text><text x="1" y="13.8" font-size="5.5" font-weight="600" fill="currentColor" stroke="none">3</text></svg>
     </button>
-    <button class="tbtn" :class="{ on: editor.isActive('bulletList') }" :title="t('ul')" @click="editor.chain().focus().toggleBulletList().run()">
+    <button class="tbtn" :class="{ on: active('bulletList') }" :title="t('ul')" @click="editor.chain().focus().toggleBulletList().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M6.5 4h7M6.5 8h7M6.5 12h7" /><circle cx="3" cy="4" r="1" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r="1" fill="currentColor" stroke="none" /><circle cx="3" cy="12" r="1" fill="currentColor" stroke="none" /></svg>
     </button>
-    <button class="tbtn" :class="{ on: editor.isActive('taskList') }" :title="t('task')" @click="editor.chain().focus().toggleTaskList().run()">
+    <button class="tbtn" :class="{ on: active('taskList') }" :title="t('task')" @click="editor.chain().focus().toggleTaskList().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h7M7 12h7" /><rect x="1.5" y="2" width="3.6" height="3.6" rx="1" /><rect x="1.5" y="10" width="3.6" height="3.6" rx="1" /><path d="m2.4 3.8.9.9 1.5-1.6" stroke-width="1.3" /></svg>
     </button>
 
     <span class="sep" />
 
-    <button class="tbtn" :class="{ on: editor.isActive('blockquote') }" :title="t('quote')" @click="editor.chain().focus().toggleBlockquote().run()">
+    <button class="tbtn" :class="{ on: active('blockquote') }" :title="t('quote')" @click="editor.chain().focus().toggleBlockquote().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" stroke="none"><path d="M3.2 11.8c-1 0-1.7-.8-1.7-1.9 0-1.9 1.3-3.4 3-4l.5.9c-1 .4-1.6 1-1.7 1.8.1 0 .3-.1.5-.1.9 0 1.6.7 1.6 1.6 0 1-.8 1.7-2.2 1.7Zm6.4 0c-1 0-1.7-.8-1.7-1.9 0-1.9 1.3-3.4 3-4l.5.9c-1 .4-1.6 1-1.7 1.8.1 0 .3-.1.5-.1.9 0 1.6.7 1.6 1.6 0 1-.8 1.7-2.2 1.7Z" /></svg>
     </button>
-    <button class="tbtn" :class="{ on: editor.isActive('codeBlock') }" :title="t('codeBlock')" @click="editor.chain().focus().toggleCodeBlock().run()">
+    <button class="tbtn" :class="{ on: active('codeBlock') }" :title="t('codeBlock')" @click="editor.chain().focus().toggleCodeBlock().run()">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 4 2 8l3.5 4M10.5 4 14 8l-3.5 4" /></svg>
     </button>
     <button class="tbtn" :title="t('hr')" @click="editor.chain().focus().setHorizontalRule().run()">

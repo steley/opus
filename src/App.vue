@@ -294,7 +294,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
         </select>
         <div v-if="viewPwMode === 'new'" class="pw-wrap es-wrap">
           <input v-model="newViewPw" :type="esShowPw ? 'text' : 'password'" class="pw-input es-pw"
-            :placeholder="t('pwViewPh')" autocomplete="new-password" spellcheck="false" />
+            :placeholder="t('pwViewPh')" maxlength="256" autocomplete="new-password" spellcheck="false" />
           <PwEye :show="esShowPw" @toggle="esShowPw = !esShowPw" />
         </div>
       </label>
@@ -352,6 +352,7 @@ onBeforeUnmount(() => clearTimeout(toastTimer))
             :type="gateShowPw ? 'text' : 'password'"
             class="pw-input"
             :placeholder="t('pwEditPh')"
+            maxlength="256"
             autocomplete="current-password"
             spellcheck="false"
             @keydown.enter="loadForEdit"

@@ -54,7 +54,11 @@ export async function verifyPassword(password, stored) {
 }
 
 function hexBytes(hex) {
-  return new Uint8Array(hex.match(/.{2}/g).map(h => parseInt(h, 16)))
+  // 守卫非法输入（空串/奇数长/非 hex）：verifyPassword 对损坏存储行不应抛 500，而是走比较失败返回 false
+  const pairs = typeof hex === 'string' && hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex)
+    ? hex.match(/.{2}/g)
+    : null
+  return new Uint8Array(pairs ? pairs.map(h => parseInt(h, 16)) : [])
 }
 
 function timingSafeEqual(a, b) {
@@ -64,9 +68,9 @@ function timingSafeEqual(a, b) {
   return diff === 0
 }
 
-/** 口令规则：任意可见字符（大小写字母/数字/特殊字符），仅限最小长度 */
+/** 口令规则：任意可见字符（大小写字母/数字/特殊字符），长度 min..256（上限防巨型口令烧 PBKDF2 CPU） */
 export function checkPassword(pw, minLen) {
-  return typeof pw === 'string' && pw.length >= minLen
+  return typeof pw === 'string' && pw.length >= minLen && pw.length <= 256
 }
 
 /** 判 json 串是否含实质内容（可解析为有节点的文档） */

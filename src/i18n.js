@@ -185,6 +185,7 @@ const messages = {
     pwShow: 'Show password',
     pwHide: 'Hide password',
     tsFailHint: 'Verification did not complete or timed out. Tap "Retry" below; if it keeps failing, refresh the page or try again later.',
+    tsRetry: '↻ Retry verification',
     back: 'Back',
     confirm: 'Confirm',
     publishing: 'Publishing…',
@@ -261,15 +262,17 @@ export function mediaErrorText(err, kind = 'image') {
   const kindText = t(kind)
   if (err.code === 'invalid') return t('errInvalid')
   if (err.code === 'https') return t('errHttps')
-  return t('errWhitelist').replace('{host}', err.host ?? '').replace('{kind}', kindText)
+  // 替换值用函数形式：host 等来自外部输入，字符串形式会被 $&/$' 等替换模式污染
+  return t('errWhitelist').replace('{host}', () => err.host ?? '').replace('{kind}', () => kindText)
 }
 
 /** 粘贴拦截提示（info = { media, code, host }） */
 export function blockedText(info) {
   const desc = info.code === 'https' ? t('nonHttps') : info.host
+  // 函数形式替换：desc 来自外部输入（hostname 可能含 $& 等字符），字符串形式会被替换模式污染
   return t('blocked')
-    .replace('{kind}', t(info.media))
-    .replace('{desc}', desc)
+    .replace('{kind}', () => t(info.media))
+    .replace('{desc}', () => desc)
 }
 
 export function toggleLang() {

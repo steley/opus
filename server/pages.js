@@ -172,8 +172,8 @@ const pageShell = (title, body, { head = '' } = {}) => {
 <link rel="icon" type="image/svg+xml" href="${FAVICON}">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <title>${escapeHtml(title)}</title>
-<script>(function(){try{var t=localStorage.getItem('opus-theme');var d=t?t==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark');var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#22262a'}}catch(e){}})();</script>
 <meta name="theme-color" content="#f7f3ea">
+<script>(function(){try{var t=localStorage.getItem('opus-theme');var d=t?t==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark');var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#22262a'}}catch(e){}})();</script>
 ${head}
 <style>${READER_CSS}</style>
 </head>

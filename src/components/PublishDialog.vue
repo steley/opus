@@ -206,7 +206,7 @@ function fmtDate(ms) {
         <label class="field-label">{{ t('viewPassword') }}</label>
         <div class="pw-wrap">
           <input v-model="viewPw" :type="showViewPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwViewPh')"
-            autocomplete="new-password" spellcheck="false" />
+            maxlength="256" autocomplete="new-password" spellcheck="false" />
           <PwEye :show="showViewPw" @toggle="showViewPw = !showViewPw" />
         </div>
 
@@ -216,14 +216,14 @@ function fmtDate(ms) {
         <label class="field-label">{{ t('managePassword') }}</label>
         <div class="pw-wrap">
           <input v-model="managePw" :type="showPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwEditPh')"
-            autocomplete="new-password" spellcheck="false" />
+            maxlength="256" autocomplete="new-password" spellcheck="false" />
           <PwEye :show="showPw" @toggle="showPw = !showPw" />
         </div>
 
         <label class="field-label">{{ t('managePasswordAgain') }}</label>
         <div class="pw-wrap">
           <input v-model="managePw2" :type="showPw ? 'text' : 'password'" class="pw-input" :placeholder="t('pwEditPh')"
-            autocomplete="new-password" spellcheck="false" />
+            maxlength="256" autocomplete="new-password" spellcheck="false" />
           <PwEye :show="showPw" @toggle="showPw = !showPw" />
         </div>
 

@@ -21,7 +21,15 @@ const palette = props.type === 'color'
   ? ['#1f2328', '#6b7280', '#dc2626', '#ea580c', '#d97706', '#16a34a', '#0d9488', '#2563eb', '#7c3aed', '#db2777']
   : ['#fef08a', '#fecaca', '#d1fae5', '#dbeafe', '#ede9fe', '#fce7f3', '#ffedd5', '#e5e7eb']
 
+// TipTap 的编辑器状态不在 Vue 响应式系统内（v3 的 useEditor 不随事务触发重渲染），
+// 而 computed 依赖只有不变的 props——不订阅事务的话 current 只求值一次便永久缓存
+const tick = ref(0)
+const onTx = () => { tick.value++ }
+onMounted(() => props.editor.on('transaction', onTx))
+onBeforeUnmount(() => props.editor.off('transaction', onTx))
+
 const current = computed(() => {
+  tick.value // 依赖事务计数：每次编辑器事务后重算
   const attrs = props.editor.getAttributes('textStyle')
   return props.type === 'color' ? attrs.color : attrs.backgroundColor
 })
