@@ -16,3 +16,7 @@ backups/
 
 # BACKLOG/本地待办（由作者自行push，不入库）
 BACKLOG.md
+
+# 审计产物（报告与分阶段产物，本地留档不入库）
+AUDIT-REPORT.md
+audit/
