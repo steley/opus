@@ -3,8 +3,6 @@
 > 落笔，即发布。/ *Write. Publish. Done.* — opus.cc
 
 [![CI](https://img.shields.io/github/actions/workflow/status/steley/opus/ci.yml?branch=main&label=CI)](https://github.com/steley/opus/actions/workflows/ci.yml)
-[![GitHub stars](https://img.shields.io/github/stars/steley/opus)](https://github.com/steley/opus/stargazers)
-[![GitHub issues](https://img.shields.io/github/issues/steley/opus)](https://github.com/steley/opus/issues)
 
 telegra.ph 风格的极简匿名发布平台：打开网页、写、点发布，即得短链。无需注册账号，
 同一套代码可部署在 **Cloudflare Workers（D1）** 或任意 **VPS（Node + SQLite）**。
@@ -158,35 +156,6 @@ opus/
 
 ---
 
-## 🤝 Contributing
-
-欢迎 Issue 与 PR：
-
-1. Fork → 新建分支 `git checkout -b feature/xxx`
-2. 提交前跑 `npm test`（改 `sanitize.js` 白名单后必须全绿）
-3. Push 并开 Pull Request
-
----
-
-## 🐛 Issues
-
-https://github.com/steley/opus/issues
-
----
-
 ## 📄 License
 
 未指定开源许可证（保留所有权利）。欢迎按上文步骤自托管部署；二次分发 / 商用请先联系作者。
-
----
-
-## ⭐ Support
-
-觉得有用的话，给个 ⭐ 就是最大的支持。
-
----
-
-## 📬 Contact
-
-- Website: https://opus.cc
-- Email: hello@opus.cc
