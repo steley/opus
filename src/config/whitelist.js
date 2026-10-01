@@ -25,8 +25,8 @@ export const whitelist = {
 
   /** 平台嵌入域名（渲染为 <iframe>，转换结果必须落在这里） */
   embedHosts: [
-    'www.youtube.com', 'www.youtube-nocookie.com',
     'player.bilibili.com',
+    'www.youtube.com', 'www.youtube-nocookie.com',
   ],
 
   /** 域名展示名（发布框"白名单"区显示用） */
