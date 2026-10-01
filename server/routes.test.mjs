@@ -296,3 +296,67 @@ test('两把 key 成对配置：无/坏 token 403，siteverify 通过则放行',
     globalThis.fetch = realFetch
   }
 })
+
+// ---------- 审计修复回归（AUDIT-001/002/004/010） ----------
+test('焚文经 JSON 端点：预览爬虫 404 不焚毁，非 bot 读取即焚（AUDIT-001）', async () => {
+  const t = make()
+  const { data: a } = await publish(t, { burnAfterRead: true, html: '<p>burn-a</p>' })
+  const bot = await t.app.request(`/api/posts/${a.id}`, { headers: { accept: '*/*', 'user-agent': 'curl/8.1' } })
+  assert.equal(bot.status, 404, 'bot 形态应 404 且不焚毁')
+  assert.ok(await t.db.get('SELECT id FROM posts WHERE id = ?', a.id), 'bot 读取后文章应仍在')
+
+  const human = await t.app.request(`/api/posts/${a.id}`) // 无 accept 头：非 bot 形态
+  assert.equal(human.status, 200, '真人形态读取成功')
+  const gone = await t.app.request(`/api/posts/${a.id}`)
+  assert.equal(gone.status, 404, '读取后即焚毁')
+
+  const { data: b } = await publish(t, { burnAfterRead: true, html: '<p>burn-b</p>' })
+  const botRead = await t.app.request(`/api/posts/${b.id}/read`, {
+    method: 'POST', headers: { 'content-type': 'application/json', accept: '*/*', 'user-agent': 'curl/8.1' },
+    body: JSON.stringify({}),
+  })
+  assert.equal(botRead.status, 404, '/read 的 bot 形态同样 404 不焚毁')
+  assert.ok(await t.db.get('SELECT id FROM posts WHERE id = ?', b.id), '/read bot 读取后文章应仍在')
+  const human2 = await t.app.request(`/api/posts/${b.id}`)
+  assert.equal(human2.status, 200, '非 bot /read 前的 JSON 直读即焚')
+})
+
+test('PUT expiry 拒绝原型链键（AUDIT-004）', async () => {
+  const t = make()
+  const { data } = await publish(t)
+  const bad = await t.app.request(`/api/posts/${data.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', expiry: 'toString' }),
+  })
+  assert.equal(bad.status, 400)
+  const ok = await t.app.request(`/api/posts/${data.id}`, {
+    method: 'PUT', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ managePassword: 'managepass', expiry: '30d' }),
+  })
+  assert.equal(ok.status, 200)
+})
+
+test('/p/:id 拦截协议相对跳转；合法 id 正常 301（AUDIT-010）', async () => {
+  const t = make()
+  const bad = await t.app.request('/p/%2Fevil.com')
+  assert.equal(bad.status, 404)
+  const { data } = await publish(t)
+  const red = await t.app.request(`/p/${data.id}`, { redirect: 'manual' })
+  assert.equal(red.status, 301)
+  assert.equal(red.headers.get('location'), `/${data.id}`)
+})
+
+test('APP_ORIGIN 固定对外域名，发布响应与 canonical 均不再反射请求头（AUDIT-002）', async () => {
+  const db = createSqliteDb(':memory:')
+  const app = createApp(db, null, { APP_ORIGIN: 'https://orig.example' })
+  const res = await app.request('/api/posts', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ title: 't', html: '<p>x</p>', json: [], managePassword: 'managepass' }),
+  })
+  const data = await res.json()
+  assert.ok(data.url.startsWith('https://orig.example/'), `url 应使用 APP_ORIGIN: ${data.url}`)
+  const page = await app.request(`/${data.id}`, { headers: { accept: 'text/html', 'x-forwarded-host': 'attacker.example' } })
+  const html = await page.text()
+  assert.ok(html.includes('href="https://orig.example/'), 'canonical 应使用 APP_ORIGIN')
+  assert.ok(!html.includes('attacker.example'), '不应反射伪造头')
+})

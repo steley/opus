@@ -74,6 +74,8 @@ npm run dev            # 前端热更新 → http://localhost:5173（/api 代理
 | `SHIELD_SITE_KEY` / `SHIELD_SECRET_KEY` | Workers `wrangler.toml [vars]` + `wrangler secret put`；VPS 环境变量 | Edge Shield 人机验证密钥（`es_…` / `es_secret_…`，edge.network 控制台获取）。**缺一即整体停用**（日志出现 `shield_secret_missing` / `shield_sitekey_missing` 告警），生产建议成对配置 |
 | `WRITE_DB` | VPS | SQLite 文件路径，默认 `./opus.db` |
 | `PORT` | VPS | 监听端口，默认 `8787` |
+| `APP_ORIGIN` | 两端 | 可选。固定对外域名（如 `https://opus.cc`）：设置后短链与文章页 canonical/OG 不再信任 `x-forwarded-*` 请求头，杜绝反射/缓存投毒 |
+| `TRUST_PROXY` | VPS | 可选。置 `1` 后限流身份回退信任 `X-Forwarded-For`/`X-Real-IP`——**仅当前置反代会覆盖这些头时开启**（如 Caddy）；否则保持关闭，防伪造头绕过限流 |
 
 ---
 

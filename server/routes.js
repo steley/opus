@@ -30,18 +30,14 @@ const CC_DOCS = 'public, max-age=300, s-maxage=3600' // 关于/条款/隐私（�
 const CC_NO_STORE = 'no-store'                       // 焚文/密码页：绝不缓存
 
 /** 内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 CF Rate Limiting 规则） */
-// CF 反代下 cf-connecting-ip 是访客真实公网 IP（仅 Worker 运行时存在）；x-forwarded-for 兜底
-function clientIp(c) {
-  return c.req.header('cf-connecting-ip')
-    || c.req.header('x-forwarded-for')?.split(',')[0]?.trim()
-    || c.req.header('x-real-ip')
-    || 'unknown'
-}
-
+/** 内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 CF Rate Limiting 规则）。
+ *  访客 IP 统一取 c.get('clientIp')——由 createApp 的入口中间件解析：默认仅信任边缘注入的
+ *  cf-connecting-ip；VPS 自建反代需显式 TRUST_PROXY=1 才回退 x-forwarded-for/x-real-ip，
+ *  否则这些头可被客户端伪造直接绕过限流（审计 AUDIT-003）。 */
 function rateLimit({ windowMs, max }) {
   const hits = new Map()
   return async (c, next) => {
-    const ip = clientIp(c)
+    const ip = c.get('clientIp') || 'unknown'
     const now = Date.now()
     const rec = hits.get(ip)
     if (!rec || now > rec.resetAt) hits.set(ip, { count: 1, resetAt: now + windowMs })
@@ -49,7 +45,11 @@ function rateLimit({ windowMs, max }) {
       console.error(JSON.stringify({ level: 'warn', type: 'rate_limited', ip, method: c.req.method, path: c.req.path }))
       return c.json({ ok: false, error: 'too many requests' }, 429)
     }
-    if (hits.size > 5000) hits.clear() // 防内存膨胀
+    if (hits.size > 5000) {
+      // 有界淘汰最旧一半（Map 保持插入序）：整表清空会让伪造 IP 风暴连带重置所有访客的计数
+      let evict = 2500
+      for (const k of hits.keys()) { hits.delete(k); if (--evict === 0) break }
+    }
     await next()
   }
 }
@@ -60,7 +60,7 @@ function guardBodySize(maxBytes) {
   return async (c, next) => {
     const len = c.req.header('content-length')
     if (len && !Number.isNaN(Number(len)) && Number(len) > maxBytes) {
-      console.error(JSON.stringify({ level: 'warn', type: 'body_too_large', ip: clientIp(c), path: c.req.path, len: Number(len) }))
+      console.error(JSON.stringify({ level: 'warn', type: 'body_too_large', ip: c.get('clientIp') || 'unknown', path: c.req.path, len: Number(len) }))
       return c.json({ ok: false, error: 'content too large' }, 413)
     }
     await next()
@@ -86,6 +86,16 @@ export function createApp(db, registerStatic = null, env = {}) {
   // 压缩：Node 运行时启用；Workers 边缘自带压缩，跳过避免双重处理
   if (db.kind !== 'd1') app.use('*', compress())
 
+  // 入口解析一次访客 IP，供限流/守卫/日志统一取用（解析规则见上方 rateLimit 注释）
+  app.use('*', async (c, next) => {
+    c.set('clientIp',
+      c.req.header('cf-connecting-ip')
+      || (env.TRUST_PROXY
+        ? c.req.header('x-forwarded-for')?.split(',')[0]?.trim() || c.req.header('x-real-ip') || 'unknown'
+        : 'unknown'))
+    await next()
+  })
+
   // 安全响应头（after-next 写入，对所有响应生效）
   // 注意：Workers 模式下静态资产绕过本中间件，安全头由 public/_headers 提供——两处需保持一致
   app.use('*', async (c, next) => {
@@ -100,7 +110,7 @@ export function createApp(db, registerStatic = null, env = {}) {
 
   app.onError((err, c) => {
     // 结构化错误日志：便于在 Workers 实时日志中按 type/path 检索具体请求
-    console.error(JSON.stringify({ level: 'error', type: 'unhandled', method: c.req.method, path: c.req.path, ip: clientIp(c), message: err?.message, stack: err?.stack }))
+    console.error(JSON.stringify({ level: 'error', type: 'unhandled', method: c.req.method, path: c.req.path, ip: c.get('clientIp') || 'unknown', message: err?.message, stack: err?.stack }))
     return c.json({ ok: false, error: 'internal error' }, 500)
   })
 
@@ -134,7 +144,7 @@ export function createApp(db, registerStatic = null, env = {}) {
 
     // 人机验证：两把 key 成对配置才启用（与 /api/config 下发 sitekey 的条件一致；缺任一只告警不拦截）
     if (shieldEnabled) {
-      const ip = clientIp(c)
+      const ip = c.get('clientIp') || 'unknown'
       const vr = await verifyShield(env.SHIELD_SECRET_KEY, String(body.shieldToken ?? ''))
       if (!vr.ok) {
         await sleep(300)
@@ -167,23 +177,28 @@ export function createApp(db, registerStatic = null, env = {}) {
       Date.now(), expiresAt
     )
 
-    return c.json({ ok: true, id, url: `${origin(c)}/${id}`, expiresAt })
+    return c.json({ ok: true, id, url: `${origin(c, env)}/${id}`, expiresAt })
   })
 
   // ---------- 公开读取（JSON） ----------
-  app.get('/api/posts/:id', async c => {
+  app.get('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 60 }), async c => {
     const post = await db.get('SELECT * FROM posts WHERE id = ?', c.req.param('id'))
     if (!post || (await purgeIfExpired(db, post))) return c.json({ ok: false, error: 'not found' }, 404)
     if (post.view_pw) return c.json({ ok: false, error: 'view password required' }, 401)
+    // 焚文与 HTML 阅读路径同款真人守卫：预览爬虫/脚本既不焚毁也不给正文，防被提前烧毁（AUDIT-001）
+    if (post.burn_after_read && isPreviewBot(c)) return c.json({ ok: false, error: 'not found' }, 404)
     return readSuccess(c, db, post)
   })
 
   // 带查看密码的读取
-  app.post('/api/posts/:id/read', rateLimit({ windowMs: 60_000, max: 30 }), async c => {
+  app.post('/api/posts/:id/read', rateLimit({ windowMs: 60_000, max: 30 }), guardBodySize(10_000), async c => {
     const { viewPassword } = await c.req.json().catch(() => ({}))
     const post = await db.get('SELECT * FROM posts WHERE id = ?', c.req.param('id'))
     if (!post || (await purgeIfExpired(db, post))) return c.json({ ok: false, error: 'not found' }, 404)
-    if (!post.view_pw) return readSuccess(c, db, post)
+    if (!post.view_pw) {
+      if (post.burn_after_read && isPreviewBot(c)) return c.json({ ok: false, error: 'not found' }, 404)
+      return readSuccess(c, db, post)
+    }
     if (!(await verifyPassword(String(viewPassword ?? ''), post.view_pw))) {
       await sleep(300) // 轻微防爆破
       return c.json({ ok: false, error: 'wrong password' }, 401)
@@ -244,10 +259,11 @@ export function createApp(db, registerStatic = null, env = {}) {
       }
       if (json.length > 1_000_000) return c.json({ ok: false, error: 'content too large' }, 400)
     }
-    // 有效期：传入合法枚举则从现在起重新计时（不传保持不变）
+    // 有效期：传入合法枚举则从现在起重新计时（不传保持不变）。
+    // 用 Object.hasOwn 而非 in：in 含原型链键（"toString" 等），会算出垃圾值入库（AUDIT-004）
     let expiresAt = guard.post.expires_at
     if (body.expiry !== undefined) {
-      if (typeof body.expiry !== 'string' || !(body.expiry in EXPIRY_MS)) return c.json({ ok: false, error: 'invalid expiry' }, 400)
+      if (typeof body.expiry !== 'string' || !Object.hasOwn(EXPIRY_MS, body.expiry)) return c.json({ ok: false, error: 'invalid expiry' }, 400)
       expiresAt = Date.now() + EXPIRY_MS[body.expiry]
     }
     // 查看密码：传字符串——空串移除保护，非空且 ≥4 位则更新；不传保持不变
@@ -262,7 +278,7 @@ export function createApp(db, registerStatic = null, env = {}) {
     return c.json({ ok: true, expiresAt })
   })
 
-  app.delete('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 30 }), async c => {
+  app.delete('/api/posts/:id', rateLimit({ windowMs: 60_000, max: 30 }), guardBodySize(10_000), async c => {
     const guard = await requireManagePw(c, c.req.param('id'))
     if (guard.fail) return guard.fail
     await db.run('DELETE FROM posts WHERE id = ?', c.req.param('id'))
@@ -288,7 +304,7 @@ export function createApp(db, registerStatic = null, env = {}) {
       c.header('Cache-Control', CC_NO_STORE)
       return htmlRes(c, passwordPage(id))
     }
-    return servePage(c, db, post)
+    return servePage(c, db, post, false, env)
   }
 
   const articlePwSubmit = async c => {
@@ -303,16 +319,21 @@ export function createApp(db, registerStatic = null, env = {}) {
       c.header('Cache-Control', CC_NO_STORE)
       return htmlRes(c, passwordPage(id, 'pwWrong'), 401)
     }
-    return servePage(c, db, post, true)   // 已通过密码表单提交 → 真人，允许焚毁
+    return servePage(c, db, post, true, env)   // 已通过密码表单提交 → 真人，允许焚毁
   }
 
   app.get('/:id', rateLimit({ windowMs: 60_000, max: 120 }), articleGet)
 
   // 阅读页密码表单 POST 到 /:id，同样需限流（此前漏配，易被并发爆破 4 位弱口令）
-  app.post('/:id', rateLimit({ windowMs: 60_000, max: 30 }), articlePwSubmit)
-  // 旧地址兼容：/p/:id 永久重定向到规范地址
-  app.get('/p/:id', c => c.redirect(`/${c.req.param('id')}`, 301))
-  app.post('/p/:id', rateLimit({ windowMs: 60_000, max: 30 }), articlePwSubmit)
+  app.post('/:id', rateLimit({ windowMs: 60_000, max: 30 }), guardBodySize(10_000), articlePwSubmit)
+  // 旧地址兼容：/p/:id 永久重定向到规范地址。
+  // 必须先过 ID_RE：param 会解码 %2F，无校验时 /p/%2Fevil.com 会拼出 //evil.com 协议相对跳转（AUDIT-010）
+  app.get('/p/:id', c => {
+    const id = c.req.param('id')
+    if (!ID_RE.test(id)) return htmlRes(c, notFoundPage(), 404)
+    return c.redirect(`/${id}`, 301)
+  })
+  app.post('/p/:id', rateLimit({ windowMs: 60_000, max: 30 }), guardBodySize(10_000), articlePwSubmit)
 
   return app
 }
@@ -357,7 +378,9 @@ function isPreviewBot(c) {
   return false
 }
 
-function origin(c) {
+function origin(c, env = {}) {
+  // APP_ORIGIN：部署方固定对外域名后，短链/canonical/OG 不再信任 x-forwarded-* 请求头（AUDIT-002）
+  if (env.APP_ORIGIN) return String(env.APP_ORIGIN).replace(/\/+$/, '')
   const proto = c.req.header('x-forwarded-proto') || new URL(c.req.url).protocol.replace(':', '')
   const host = c.req.header('x-forwarded-host') || c.req.header('host') || new URL(c.req.url).host
   return `${proto}://${host}`
@@ -391,7 +414,7 @@ async function readSuccess(c, db, post) {
  *  - 焚文：DELETE ... WHERE burn_after_read=1 RETURNING *，只有真正删成的一个请求
  *    能拿到全文并交付，其余并发请求得到 404（首读即焚、不可再读）。
  *  - 非焚文：仅普通读取交付，保留数据行，并下发可缓存头（编辑/删除后旧内容最多残留 s-maxage）。 */
-async function servePage(c, db, post, fromPw = false) {
+async function servePage(c, db, post, fromPw = false, env = {}) {
   // 阅后即焚避免被“预览爬虫”提前烧毁：焚文对疑似预览请求既不焚毁也不给正文（返回 404）。
   // 仅当是真人浏览器（UA/Accept 通过）或已通过密码表单提交（fromPw=true）时才真正焚毁交付。
   if (post.burn_after_read) {
@@ -406,7 +429,7 @@ async function servePage(c, db, post, fromPw = false) {
   } else {
     c.header('Cache-Control', CC_PAGE)
   }
-  return c.html(articlePage(post, origin(c)))
+  return c.html(articlePage(post, origin(c, env)))
 }
 
 /** 定期清理：物理删除已过期文章（Workers Cron / VPS 启动时调用） */
