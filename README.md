@@ -1,269 +1,192 @@
-# Opus — 落笔即发布
+# Opus
 
-> Write. Publish. Done. — opus.cc
+> 落笔，即发布。/ *Write. Publish. Done.* — opus.cc
 
-一个 telegra.ph 风格的轻量写作/发布工具：富文本编辑器 + 匿名发布后端 + 密码保护 + 阅后即焚。
+[![CI](https://img.shields.io/github/actions/workflow/status/steley/opus/ci.yml?branch=main&label=CI)](https://github.com/steley/opus/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/steley/opus)](https://github.com/steley/opus/stargazers)
+[![GitHub issues](https://img.shields.io/github/issues/steley/opus)](https://github.com/steley/opus/issues)
 
-**同一套代码，支持 VPS（Node + SQLite）与 Cloudflare Workers（D1）两种部署。**
+telegra.ph 风格的极简匿名发布平台：打开网页、写、点发布，即得短链。无需注册账号，
+同一套代码可部署在 **Cloudflare Workers（D1）** 或任意 **VPS（Node + SQLite）**。
 
-Slogan：**落笔，即发布。** / *Write. Publish. Done.*（opus.cc）
+---
 
-前端：Vue 3 + Vite + TipTap 3（headless 引擎，零外部字体/图标库）。
+## ✨ Features
 
-后端：Hono（同构框架，Node 与 Workers 共用同一套路由），数据库适配层同时支持 SQLite 与 D1。
+- ✅ 免注册匿名发布，生成 8 位短链（如 `opus.cc/5KHz3FbA`），自动复制到剪贴板
+- ✅ 富文本编辑器：H2/H3、颜色、列表、引用、代码块、分割线、图片 / YouTube·B 站嵌入，草稿自动保存
+- ✅ 阅后即焚：首次成功阅读即从数据库物理销毁
+- ✅ 有效期 1 小时～365 天，到期自动删除（惰性删除，无需定时任务）
+- ✅ 双密码：查看密码（阅读门槛）+ 管理密码（编辑/删除唯一凭证，PBKDF2 加盐哈希存储）
+- ✅ 已发布文章可编辑：改内容、改有效期、设置/移除查看密码
+- ✅ 阅读页：长文自动目录、代码块一键复制、图片灯箱、有效期本地时区提醒
+- ✅ 中英双语 + 日夜双主题，零外部字体/图标库/追踪
+- 🔒 人机验证（Edge Shield 页内 PoW，全浏览器兼容）+ 服务端 HTML 白名单净化
+- 🚀 阅读页边缘缓存友好，Workers 免费版可支撑约 10 万次阅读/天
+- 🧩 双端部署：Cloudflare Workers（D1）/ VPS（systemd + 反代）
 
-## 功能
+---
 
-### 编辑器
-- 正文小节 H2/H3（H1 保留给页面标题，阅读页模板渲染）、粗/斜/下划线/删除线
-- 文字颜色 + 背景色（色板 + hex）、有序/无序/checklist、引用、代码块、分割线
-- URL 图片插入 / YouTube、B 站视频链接嵌入 iframe（sandbox 受限）。
-  > 注：视频直链（mp4 直链 → `<video>`）已停用，仅保留平台嵌入，避免外链版权与不可靠（服务端亦不解析 `<video>`），**三层白名单**见下
-- 标题/作者栏回车依次跳转；页面不满一屏时 footer 贴底（非 fixed）
-- 管理密码框带明文切换（眼睛按钮）——管理密码丢失即永久锁死，防手误打错；查看密码同样支持
-- 草稿自动保存：标题/作者/正文每 500ms 存 localStorage，刷新/关页自动恢复
-- 双主题：日间「暖纸色」、夜间「柔和暖灰」，系统黑体栈，零外部资源
-- 右下角悬浮：夜间切换 / 中英文切换 / 返回顶部
+## 📸 Screenshot
 
-### 发布
-- 「发布」→ 确认框（三组、组分隔线）：
-  - **阅后即焚**（可选）；
-  - **有效期**（默认 30 天，可选 1 小时/12 小时/24 小时/1 天/15 天/30 天/90 天/180 天/365 天，到期自动删除并在阅读页提醒）；
-  - **查看密码**（可选 ≥4 位）；
-  - **管理密码**（必填 ≥8 位，两次确认；拥有编辑+删除权限）；
-- 确认后生成文章短链（`/{8位ID}`，如 `opus.cc/5KHz3FbA`）并自动复制到剪贴板
-- 阅后即焚：文章被首次成功阅读后从数据库销毁，链接即刻失效
-- 有效期：惰性过期删除——过期后首次被访问时物理删除并 404（无需定时任务，两种运行时通用）
-- 查看密码：阅读页出现密码表单（无 JS 流程），错误密码 401 + 延迟响应防爆破
-- 管理密码：编辑与删除的唯一凭证，PBKDF2-SHA256 加盐哈希存储
-- 人机验证：可配置启用 Edge Shield（页内 PoW，全浏览器兼容），配置方法见「运维备忘」
+![Opus — 落笔，即发布](./public/og.png)
 
-### 阅读页
-- 长文自动目录：正文 ≥3 个 h2/h3 时在正文前渲染折叠目录（`<details>` 原生折叠，零 JS），标题自动注入锚点
-- 代码块悬浮一键复制（图标按钮，成功显示 ✓，含 execCommand 降级）
-- 图片点击灯箱放大（点图开、点背景或 Esc 关）
-- 有效期/焚毁提示按访客本地时区显示；举报入口（mailto）；不进搜索引擎索引
+---
 
-### 编辑与删除
-- 阅读页右上角「✎ 编辑」→ 输入管理密码 → 进入编辑模式（`/edit/{id}`）：文章载入编辑器，顶栏「发布」位置变为「删除」「更新」两个按钮
-- 编辑栏可同时修改**有效期**（从现在起重新计时，默认不修改）与**查看密码**（设置新密码 / 移除保护）
-- 「更新」保存修改到服务端（服务端净化后入库）；「删除」弹出确认框后物理删除并回到首页
+## 🛠 Tech Stack
 
-### 草稿自动保存
-- 新发布模式下，标题/作者/正文每 500ms 自动存入 localStorage；意外关页/刷新后重开自动恢复并提示
-- 发布成功后草稿清空；编辑已有文章（`/edit/{id}`）不读写草稿（内容已在服务端）
+- **前端**：Vue 3 + Vite + TipTap 3（headless 引擎，UI 全自研）
+- **后端**：Hono（同构框架，Node 与 Workers 共用同一套路由）
+- **数据库**：`node:sqlite` / Cloudflare D1（适配层二选一）
+- **测试**：`node:test`（净化 + 路由回归，CI 跑 Node 22/24 双版本矩阵）
 
-## 快速开始（本地开发）
+---
 
-前置要求：**Node.js ≥ 22.13**（建议 24.x，后端使用内置 `node:sqlite`）
+## 📦 Installation
+
+### Requirements
+
+- Node.js **≥ 22.13**（建议 24.x，后端使用内置 `node:sqlite`）
+- npm
+
+### Clone & install
 
 ```bash
+git clone https://github.com/steley/opus.git
+cd opus
 npm install
-npm run build          # 前端产物 dist/（后端托管它）
-npm run dev:server     # 后端 + 静态托管：http://localhost:8787（--watch 自动重启）
-npm run dev            # 前端热更新：http://localhost:5173（/api 代理到 8787）
 ```
 
-## 部署 A：VPS（Node + SQLite）
-
-### 1. 准备服务器
+### Run locally
 
 ```bash
-# 以 Ubuntu/Debian 为例：安装 Node 24
-curl -fsSL https://deb.nodesource.com/install_24.x | bash -
-apt-get install -y nodejs
+npm run build          # 构建前端产物 dist/（后端托管它）
+npm run dev:server     # 后端 + 静态托管 → http://localhost:8787
+npm run dev            # 前端热更新 → http://localhost:5173（/api 代理到 8787）
 ```
 
-### 2. 获取代码并构建
+---
+
+## ⚙️ Configuration
+
+无必填配置即可运行；以下均为可选项：
+
+| 变量 | 端 | 说明 |
+|---|---|---|
+| `SHIELD_SITE_KEY` / `SHIELD_SECRET_KEY` | Workers `wrangler.toml [vars]` + `wrangler secret put`；VPS 环境变量 | Edge Shield 人机验证密钥（`es_…` / `es_secret_…`，edge.network 控制台获取）。**缺一即整体停用**（日志出现 `shield_secret_missing` / `shield_sitekey_missing` 告警），生产建议成对配置 |
+| `WRITE_DB` | VPS | SQLite 文件路径，默认 `./opus.db` |
+| `PORT` | VPS | 监听端口，默认 `8787` |
+
+---
+
+## 🚀 Deployment
+
+### Cloudflare Workers（D1）
 
 ```bash
-git clone https://github.com/<你的用户名>/opus.git && cd opus
-# 或者不上传 git，直接本地 rsync：
-# rsync -av --exclude node_modules --exclude dist --exclude opus.db ./ user@vps:/opt/opus/
-npm ci
-npm run build
+npx wrangler d1 create opus                                            # database_id 填入 wrangler.toml
+npx wrangler d1 execute opus --remote --file schema.sql                # 建表（首次）
+npx wrangler d1 execute opus --remote --file db-index.sql              # 建索引（首次）
+npm run deploy                                                         # = vite build + wrangler deploy
 ```
 
-### 3. systemd 常驻
+绑定域名：`wrangler.toml` 中 `routes = [{ pattern = "opus.cc", custom_domain = true }]`。
 
-```ini
-# /etc/systemd/system/opus.service
-[Unit]
-Description=Opus publishing platform
-After=network.target
-
-[Service]
-WorkingDirectory=/opt/opus
-ExecStart=/usr/bin/node server/index.js
-Environment=PORT=8787
-Environment=WRITE_DB=/opt/opus/opus.db
-Restart=on-failure
-User=www-data
-
-[Install]
-WantedBy=multi-user.target
-```
+### VPS（Node + SQLite）
 
 ```bash
-chown -R www-data /opt/opus
-systemctl enable --now opus
+npm ci && npm run build
+node server/index.js    # 配 systemd 常驻；Caddy/Nginx 反代 + HTTPS
 ```
 
-### 4. 域名解析 + 反向代理（HTTPS）
+> 反代需转发 `X-Forwarded-Proto` / `X-Forwarded-Host`，文章短链才会按真实域名生成。
 
-DNS：`A 记录 opus.cc → VPS IP`。
+---
 
-**Caddy（推荐，自动 HTTPS）**——`/etc/caddy/Caddyfile`：
+## 📖 Usage
 
-```
-opus.cc {
-    reverse_proxy 127.0.0.1:8787
-}
-```
+1. 打开 opus.cc → 写标题 / 正文 → 点「发布」
+2. 确认框可选：**阅后即焚**、**有效期**（默认 30 天）、**查看密码**；设定**管理密码**（≥8 位，丢失即永久锁死）
+3. 确认后得到短链并自动复制，直接分享
+4. 修改 / 删除：阅读页「✎ 编辑」→ 输入管理密码 → 「更新」/「删除」
 
-**Nginx + certbot**：
+---
 
-```nginx
-server {
-    server_name opus.cc;
-    location / {
-        proxy_pass http://127.0.0.1:8787;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header X-Forwarded-Host $host;
-    }
-}
-```
-
-> **要点**：反代必须转发 `X-Forwarded-Proto` / `X-Forwarded-Host` 头，文章短链才会按真实域名（而不是 127.0.0.1:8787）生成。
-
-## 部署 B：Cloudflare Workers（D1）
-
-前置：域名 DNS 已托管在 Cloudflare（在 CF 控制台 Add site）。
-
-```bash
-npm install -g wrangler
-npx wrangler login
-
-# 1. 创建 D1 数据库，把返回的 database_id 填入 wrangler.toml
-npx wrangler d1 create opus
-
-# 2. 初始化表结构（首次）
-npx wrangler d1 execute opus --remote --file schema.sql
-
-# 3. 构建并部署（前端静态资源 + API 同一个 Worker）
-npm run build
-npm run deploy
-```
-
-绑定自有域名：在 `wrangler.toml` 追加，然后重新 `npm run deploy`：
-
-```toml
-routes = [
-  { pattern = "opus.cc", custom_domain = true }
-]
-```
-（或在 Dashboard：Workers & Pages → opus → Settings → Domains & Routes）
-
-本地调试 Worker 路径：`npx wrangler dev`（本地模拟 D1）。注意：本地 `opus.db` 与 D1 **不互通**，D1 是全新数据库。
-
-## 上传到 GitHub
-
-```bash
-gh repo create opus --public --source=. --push    # 需要 gh CLI
-# 或手动：git init && git add . && git commit -m "Opus" && git remote add origin <url> && git push -u origin main
-```
-
-`node_modules/`、`dist/`、`opus.db` 已被 .gitignore 排除，克隆者拿到纯源码，按上面「部署 A / B」自行构建部署（README 即文档）。
-
-可选：GitHub Actions 自动部署到 Workers——仓库 Settings → Secrets 添加 `CLOUDFLARE_API_TOKEN`（权限含 Workers 与 D1 编辑），新建 `.github/workflows/deploy.yml`：
-
-```yaml
-name: Deploy
-on:
-  push:
-    branches: [main]
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 24 }
-      - run: npm ci
-      - run: npm run build
-      - run: npx wrangler d1 execute opus --remote --file schema.sql
-      - run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-```
-
-## 运维备忘（上线/生产）
-
-**安全注意**：`SHIELD_SECRET_KEY` 通过 `npx wrangler secret put SHIELD_SECRET_KEY` 存储，勿写入仓库/README。`SHIELD_SITE_KEY`（公钥）在 `wrangler.toml`，公开无碍。库内仅含公钥与 D1 database_id，无泄露 secret。
-
-**关键项**：
-- **发布人机验证（Edge Shield，单套）**：页内 PoW + 1–100 人性分，无 iframe、无 Cookie、无第三方追踪，
-  兼容鸿蒙 ArkWeb 等国产内核。曾用 Cloudflare Turnstile，其挑战依赖跨源 iframe 执行，在 ArkWeb 上
-  报 600010（挑战执行失败）且无解，故弃用。
-  配置：在 edge.network 控制台创建 widget 拿到一对密钥 → site key（`es_…`）写入 `wrangler.toml` 的
-  `[vars] SHIELD_SITE_KEY`；secret（`es_secret_…`）执行 `npx wrangler secret put SHIELD_SECRET_KEY`。
-  VPS 用环境变量同名配置。两者**缺一即整体停用**（此时发布不设防，日志会出现
-  `shield_secret_missing` 告警）——生产必须保证两者都在。
-- **验证评分策略**：siteverify 响应含 1–100 人性分（score），当前 `success === true` 即放行；
-  如需收紧可在 `verifyShield` 加 `score >= N` 判断。失败日志带 `score` 与 `codes` 字段，
-  供 `wrangler tail` / Logpush 检索诊断。
-- D1 索引：`db-index.sql` 为 `posts(expires_at)/(created_at)` 建索引（幂等）。新库初始化后执行 `npx wrangler d1 execute opus --remote --file db-index.sql`；`schema.sql` 本身不含索引。
-- `npm test`：`node:test` 跑 sanitize 净化回归（锁 XSS 关键路径）；修改 `sanitize.js` 白名单后必须跑。
-- 结构化日志：routes 对 onError / 人机验证失败 / 限流命中等输出 JSON 日志（含 type/path/ip/score/codes），可用 `wrangler tail` / Logpush 按 `type:` 字段检索排查。
-- 限流用内存 Map（免费版单隔离有效）；若未来多 region/扩容需 KV 承接或 paid plan，届时再替换。
-- 阅后即焚 / 编辑 / 删除路径见下方 API，均有原子删除 / 失效语义，勿为这类文章加共享缓存。
-
-## API
+## 🔌 API Documentation
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/api/posts` | 发布：`{ title, author, html, json, burnAfterRead, expiry('1h'|'12h'|'24h'|'1d'|'15d'|'30d'|'90d'|'180d'|'365d'，默认 '30d'), viewPassword?, managePassword, shieldToken?（启用人机验证时必带） }` → `{ id, url, expiresAt }` |
-| GET | `/api/posts/:id` | 公开读取（有查看密码时 401） |
-| POST | `/api/posts/:id/read` | `{ viewPassword }` 带密码读取；**阅后即焚/已过期在成功访问时物理删除** |
+| POST | `/api/posts` | 发布 `{ title?, author?, html, json, burnAfterRead?, expiry?, viewPassword?, managePassword, shieldToken? }` → `{ id, url, expiresAt }`；`expiry` ∈ `1h…365d`（默认 `30d`） |
+| GET | `/api/posts/:id` | 公开读取 JSON（有查看密码时 401） |
+| POST | `/api/posts/:id/read` | `{ viewPassword }` 带密码读取；阅后即焚/已过期在成功访问时物理删除 |
 | POST | `/api/posts/:id/edit-read` | `{ managePassword }` 编辑器读取（不触发焚毁） |
-| PUT | `/api/posts/:id` | `{ managePassword, title?, author?, html?, json?, expiry?, viewPassword? }` 编辑；`expiry` 传合法枚举则**从现在起重新计时**，`viewPassword` 传空串移除保护、非空（≥4 位）则更新，均不传保持不变 → `{ ok, expiresAt }` |
+| PUT | `/api/posts/:id` | `{ managePassword, …fields }` 编辑；`viewPassword` 空串移除 / ≥4 位更新 → `{ ok, expiresAt }` |
 | DELETE | `/api/posts/:id` | `{ managePassword }` 删除 |
-| GET | `/p/:id` | **已废弃**：301 重定向到 `/:id` |
-| GET | `/:id` | 阅读页（HTML；受保护时返回密码表单；显示有效期提醒与编辑入口） |
-| POST | `/:id` | 查看密码表单提交（无 JS 流程，旧 `/p/:id` 表单同样兼容） |
+| GET | `/:id` | 阅读页 HTML（受保护时返回密码表单；POST `/:id` 提交密码） |
 | GET | `/edit/:id` | 编辑模式（前端应用，管理密码门） |
 
-错误统一 `{ ok: false, error }`；发布与敏感读取有内存限流（Workers 上为每 isolate 尽力而为，生产建议前置 Cloudflare Rate Limiting 规则）。
+错误统一 `{ ok: false, error }`；发布与敏感读取有内存限流。
 
-## 安全模型（三层白名单）
+**安全模型（三层白名单）**：编辑器 schema → 粘贴过滤 → 服务端净化（`server/sanitize.js`，
+sanitize-html 标签/域名/scheme 白名单，是真正的安全边界，不可绕过）。密码 PBKDF2-SHA256
+加盐哈希 + 常量时间比较，错误密码延迟 300ms 防爆破。
 
-1. **编辑器 schema**：未注册的标签/属性在解析层即被丢弃
-2. **粘贴过滤**：粘贴/拖拽 HTML 中不在白名单的媒体直接剔除（前端体验层）
-3. **服务端净化（真正安全边界）**：`server/sanitize.js` 用 sanitize-html 在入库前最终过滤——标签白名单、iframe 仅白名单嵌入域名、style 仅 hex 颜色、scheme 仅 https、复选框强制禁用。**匿名发布接口可被绕过前端直接调用，这一层不可省略**
+---
 
-密码存储：PBKDF2-SHA256（5000 迭代 + 随机盐，迭代数按 Workers 免费版 10ms CPU 限制调优），校验用常量时间比较；错误密码响应延迟 300ms。
-
-## 目录结构
+## 🏗 Project Structure
 
 ```
+opus/
 ├── src/                    # 前端
-│   ├── App.vue             # 编辑器初始化、发布流程、toast
-│   ├── styles.css          # 明暗双主题 + 全部样式
-│   ├── i18n.js / theme.js  # 中英文案 / 夜间模式（localStorage 记忆）
-│   ├── api.js              # 后端 API 封装 + 剪贴板
-│   ├── config/whitelist.js # 媒体 URL 白名单（前端两层共用，第三层见 server/sanitize.js）
+│   ├── App.vue             # 编辑器、发布流程
+│   ├── api.js              # 后端 API 封装
+│   ├── i18n.js / theme.js  # 中英文案 / 夜间模式
+│   ├── config/whitelist.js # 媒体 URL 白名单（前端层）
 │   ├── editor/             # 视频节点、粘贴过滤
-│   └── components/         # Toolbar / ColorMenu / MediaDialog / PublishDialog / FloatActions
+│   └── components/         # Toolbar / ColorMenu / MediaDialog / PublishDialog…
 ├── server/                 # 后端（Node 与 Workers 共用）
-│   ├── routes.js           # 全部 API + 阅读页（Hono 同构）
-│   ├── db.js               # SQLite / D1 适配器
+│   ├── routes.js           # 全部 API + 阅读页
+│   ├── db.js / db-sqlite.js# SQLite / D1 适配器
 │   ├── sanitize.js         # 服务端 HTML 净化（安全边界）
-│   ├── pages.js            # 阅读页 / 密码页 / 404 模板
-│   ├── util.js             # 短 ID / PBKDF2 / 校验 / 转义
-│   ├── db-sqlite.js        # SQLite 适配器（node:sqlite，仅 VPS 用）
-│   └── index.js            # VPS 入口（静态托管 + 压缩 + 缓存头）
+│   ├── pages.js            # 阅读页 / 密码页模板
+│   ├── util.js             # 短 ID / PBKDF2 / 校验
+│   └── index.js            # VPS 入口
 ├── worker/index.js         # Cloudflare Workers 入口（D1 + Assets）
-├── schema.sql              # D1 建表脚本
+├── schema.sql / db-index.sql
 └── wrangler.toml           # Workers 部署配置
 ```
+
+---
+
+## 🤝 Contributing
+
+欢迎 Issue 与 PR：
+
+1. Fork → 新建分支 `git checkout -b feature/xxx`
+2. 提交前跑 `npm test`（改 `sanitize.js` 白名单后必须全绿）
+3. Push 并开 Pull Request
+
+---
+
+## 🐛 Issues
+
+https://github.com/steley/opus/issues
+
+---
+
+## 📄 License
+
+未指定开源许可证（保留所有权利）。欢迎按上文步骤自托管部署；二次分发 / 商用请先联系作者。
+
+---
+
+## ⭐ Support
+
+觉得有用的话，给个 ⭐ 就是最大的支持。
+
+---
+
+## 📬 Contact
+
+- Website: https://opus.cc
+- Email: hello@opus.cc
