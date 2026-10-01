@@ -1,0 +1,41 @@
+# CI：push / PR 时跑服务端测试 + 前端构建。
+# 注意 node:sqlite 需要 Node ≥ 22.13（见 package.json engines），故矩阵覆盖 22 LTS 与 24。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同分支新提交只保留最新一次运行，省额度
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: 安装依赖（锁定 package-lock.json）
+        run: npm ci
+
+      - name: 服务端测试（node:test + 内存 sqlite，无外部依赖）
+        run: npm test
+
+      - name: 前端构建
+        run: npm run build
