@@ -1,5 +1,5 @@
 import { escapeHtml } from './util.js'
-import { FOOTER_LINKS, SITE_NAME } from '../src/config/site.js'
+import { FOOTER_LINKS, SITE_NAME, SITE_DOMAIN } from '../src/config/site.js'
 
 /** 服务端页面双语文案（zh/en 同时渲染进 HTML，客户端按 opus-lang cookie 切换显示） */
 const TEXT = {
@@ -469,8 +469,27 @@ const DOCS = {
 const docSections = doc =>
   doc.sections.map(([h, ps]) => `<h2>${escapeHtml(h)}</h2>\n${ps.map(p => `<p>${escapeHtml(p)}</p>`).join('\n')}`).join('\n')
 
+/** 文档页搜索元数据（英文，服务 SERP；页面可见内容仍是中英双渲染） */
+const DOC_META = {
+  about: {
+    title: 'About Opus — Minimal Anonymous Publishing Platform',
+    desc: 'What Opus is and how it works: an account-free publishing platform where every post becomes a shareable short link, with view passwords and auto-expiry.',
+    path: '/about',
+  },
+  terms: {
+    title: 'Terms of Service — Opus',
+    desc: 'The terms that apply when you publish or read on opus.cc: acceptable use, content responsibility, and service availability.',
+    path: '/terms',
+  },
+  privacy: {
+    title: 'Privacy Policy — Opus',
+    desc: 'What opus.cc collects and keeps: published content, short-lived technical logs, and nothing about your identity — no accounts, no email, no tracking.',
+    path: '/privacy',
+  },
+}
+
 function docPage(key) {
-  const zh = DOCS.zh[key], en = DOCS.en[key]
+  const zh = DOCS.zh[key], en = DOCS.en[key], meta = DOC_META[key]
   const body = `<main>
 <h1>${dual(zh.title, en.title)}</h1>
 <div class="meta-row">
@@ -482,7 +501,9 @@ function docPage(key) {
 <div class="t-en" hidden>${docSections(en)}</div>
 <p class="contact">📮 <a href="mailto:hello@opus.cc">hello@opus.cc</a></p>
 </main>`
-  return pageShell(zh.title, body)
+  const head = `<meta name="description" content="${escapeHtml(meta.desc)}">
+<link rel="canonical" href="https://${SITE_DOMAIN}${meta.path}">`
+  return pageShell(meta.title, body, { head })
 }
 
 export function aboutPage() {
