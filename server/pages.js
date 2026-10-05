@@ -92,7 +92,6 @@ ul[data-type=taskList] li{display:flex;gap:9px;align-items:flex-start}
 img{max-width:100%;height:auto;border-radius:8px}
 .video-embed{position:relative;aspect-ratio:16/9;margin:.8em 0;border-radius:9px;overflow:hidden;background:#000}
 .video-embed iframe{width:100%;height:100%;border:0}
-.video-file video{width:100%;border-radius:9px}
 hr{border:none;border-top:1px solid var(--line);margin:1.6em 0}
 a{color:var(--accent)}
 html{scroll-behavior:smooth}
@@ -488,7 +487,7 @@ const DOC_META = {
   },
 }
 
-function docPage(key) {
+export function docPage(key) {
   const zh = DOCS.zh[key], en = DOCS.en[key], meta = DOC_META[key]
   const body = `<main>
 <h1>${dual(zh.title, en.title)}</h1>
@@ -504,16 +503,4 @@ function docPage(key) {
   const head = `<meta name="description" content="${escapeHtml(meta.desc)}">
 <link rel="canonical" href="https://${SITE_DOMAIN}${meta.path}">`
   return pageShell(meta.title, body, { head })
-}
-
-export function aboutPage() {
-  return docPage('about')
-}
-
-export function termsPage() {
-  return docPage('terms')
-}
-
-export function privacyPage() {
-  return docPage('privacy')
 }

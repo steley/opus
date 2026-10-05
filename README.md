@@ -86,7 +86,6 @@ npm run dev            # 前端热更新 → http://localhost:5173（/api 代理
 ```bash
 npx wrangler d1 create opus                                            # database_id 填入 wrangler.toml
 npx wrangler d1 execute opus --remote --file schema.sql                # 建表（首次）
-npx wrangler d1 execute opus --remote --file db-index.sql              # 建索引（首次）
 npm run deploy                                                         # = vite build + wrangler deploy
 ```
 
@@ -152,7 +151,7 @@ opus/
 │   ├── util.js             # 短 ID / PBKDF2 / 校验
 │   └── index.js            # VPS 入口
 ├── worker/index.js         # Cloudflare Workers 入口（D1 + Assets）
-├── schema.sql / db-index.sql
+├── schema.sql
 └── wrangler.toml           # Workers 部署配置
 ```
 

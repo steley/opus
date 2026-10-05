@@ -4,22 +4,9 @@
  */
 import { Hono } from 'hono'
 import { compress } from 'hono/compress'
-import { genId, hashPassword, verifyPassword, validatePublish, checkPassword, VIEW_PW_MIN } from './util.js'
+import { genId, hashPassword, verifyPassword, validatePublish, checkPassword, VIEW_PW_MIN, EXPIRY_MS } from './util.js'
 import { sanitizePostHtml } from './sanitize.js'
-import { articlePage, passwordPage, notFoundPage, aboutPage, termsPage, privacyPage } from './pages.js'
-
-/** 有效期枚举（默认 30 天） */
-const EXPIRY_MS = {
-  '1h': 3600e3,
-  '12h': 12 * 3600e3,
-  '24h': 24 * 3600e3,
-  '1d': 24 * 3600e3,
-  '15d': 15 * 24 * 3600e3,
-  '30d': 30 * 24 * 3600e3,
-  '90d': 90 * 24 * 3600e3,
-  '180d': 180 * 24 * 3600e3,
-  '365d': 365 * 24 * 3600e3,
-}
+import { articlePage, passwordPage, notFoundPage, docPage } from './pages.js'
 
 // ---------- 缓存策略（配合 CF Cache Rule / 浏览器，详见 README「缓存与抗压」） ----------
 // 页面语言已改为客户端切换（pages.js 双语双渲染），HTML 与 cookie/Accept-Language 解耦，可安全缓存。
@@ -114,9 +101,9 @@ export function createApp(db, registerStatic = null, env = {}) {
     return c.json({ ok: false, error: 'internal error' }, 500)
   })
 
-  app.get('/about', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, aboutPage()) })
-  app.get('/terms', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, termsPage()) })
-  app.get('/privacy', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, privacyPage()) })
+  app.get('/about', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, docPage('about')) })
+  app.get('/terms', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, docPage('terms')) })
+  app.get('/privacy', c => { c.header('Cache-Control', CC_DOCS); return htmlRes(c, docPage('privacy')) })
 
   app.get('/api/health', c => c.json({ ok: true, db: db.kind }))
 

@@ -11,3 +11,6 @@ export const FOOTER_LINKS = [
   { path: '/terms', labelKey: 'terms' },
   { path: '/privacy', labelKey: 'privacy' },
 ]
+
+/** 有效期选项（单一数据源，键与服务端 EXPIRY_MS 及 i18n 的 exp<key> 对应） */
+export const EXPIRY_OPTS = ['1h', '12h', '24h', '1d', '15d', '30d', '90d', '180d', '365d']

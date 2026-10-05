@@ -24,7 +24,7 @@ watch(() => props.mode, () => { url.value = '' })
 const hostGroups = computed(() => {
   const hosts = props.mode === 'image'
     ? whitelist.imageHosts
-    : [...whitelist.videoHosts, ...whitelist.embedHosts]
+    : whitelist.embedHosts
   const groups = []
   for (const h of hosts) {
     const name = whitelist.hostNames[h] ?? h

@@ -11,17 +11,11 @@
  */
 
 export const whitelist = {
-  /** true 时允许任意 https 图片源（开发期方便）；上线前改为 false */
-  allowAnyImageHost: false,
-
   /** 图片直链域名 */
   imageHosts: [
     'i.imgur.com',
     'img.opus.cc'
   ],
-
-  /** 视频直链域名（渲染为 <video>）——当前为空，视频仅支持下方平台嵌入 */
-  videoHosts: [],
 
   /** 平台嵌入域名（渲染为 <iframe>，转换结果必须落在这里） */
   embedHosts: [
@@ -51,8 +45,6 @@ const embedRules = [
   },
 ]
 
-const VIDEO_FILE_EXT = /\.(mp4|webm|ogv|ogg|mov|m4v|m3u8)([?#]|$)/i
-
 function hostAllowed(hostname, patterns) {
   return patterns.some(p =>
     p.startsWith('*.')
@@ -76,18 +68,14 @@ export function checkImageUrl(url) {
   const parsed = parseUrl(url)
   if (parsed.error) return { ok: false, error: parsed.error }
   const { u } = parsed
-  if (whitelist.allowAnyImageHost || hostAllowed(u.hostname, whitelist.imageHosts)) {
+  if (hostAllowed(u.hostname, whitelist.imageHosts)) {
     return { ok: true, url: u.href }
   }
   return { ok: false, error: { code: 'whitelist', host: u.hostname } }
 }
 
-/**
- * 校验视频 URL：
- *   - 平台页面（YouTube/B 站）→ 转换为 embed 地址，渲染为受 sandbox 限制的 iframe
- *   - 视频直链（mp4/webm/m3u8 等）→ 渲染为 <video>
- * 返回 { ok, kind: 'embed'|'file', src, embed? } 或 { ok: false, error: { code, host? } }
- */
+/** 校验视频 URL：平台页面（YouTube/B 站）→ 转换为 embed 地址；已在白名单的平台域名 → 直接作 embed。
+ *  返回 { ok, kind: 'embed', src, embed? } 或 { ok: false, error: { code, host? } }，文案由 i18n 层处理 */
 export function checkVideoUrl(url) {
   const parsed = parseUrl(url)
   if (parsed.error) return { ok: false, error: parsed.error }
@@ -102,10 +90,6 @@ export function checkVideoUrl(url) {
         return { ok: true, kind: 'embed', src: u.href, embed }
       }
     }
-  }
-
-  if (VIDEO_FILE_EXT.test(u.pathname) && hostAllowed(hostname, whitelist.videoHosts)) {
-    return { ok: true, kind: 'file', src: u.href }
   }
 
   if (hostAllowed(hostname, whitelist.embedHosts)) {

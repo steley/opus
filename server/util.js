@@ -91,8 +91,19 @@ export function escapeHtml(s = '') {
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;')
 }
 
-/** 发布入参校验：返回 { error } 或规范化字段 */
-const EXPIRY_OPTIONS = ['1h', '12h', '24h', '1d', '15d', '30d', '90d', '180d', '365d']
+/** 有效期枚举（单一数据源，routes.js 按键取毫秒）：键为对外标识，值为毫秒 */
+export const EXPIRY_MS = {
+  '1h': 3600e3,
+  '12h': 12 * 3600e3,
+  '24h': 24 * 3600e3,
+  '1d': 24 * 3600e3,
+  '15d': 15 * 24 * 3600e3,
+  '30d': 30 * 24 * 3600e3,
+  '90d': 90 * 24 * 3600e3,
+  '180d': 180 * 24 * 3600e3,
+  '365d': 365 * 24 * 3600e3,
+}
+const EXPIRY_OPTIONS = Object.keys(EXPIRY_MS)
 const EXPIRY_DEFAULT = '30d'
 
 export function validatePublish(body) {

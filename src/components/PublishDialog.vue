@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t } from '../i18n.js'
 import { copyText, getConfig } from '../api.js'
+import { EXPIRY_OPTS } from '../config/site.js'
 import PwEye from './PwEye.vue'
 
 /**
@@ -188,15 +189,7 @@ function fmtDate(ms) {
         <div class="expiry-row">
           <span class="field-label inline">{{ t('expiry') }}</span>
           <select v-model="expiry" class="expiry-select">
-            <option value="1h">{{ t('exp1h') }}</option>
-            <option value="12h">{{ t('exp12h') }}</option>
-            <option value="24h">{{ t('exp24h') }}</option>
-            <option value="1d">{{ t('exp1d') }}</option>
-            <option value="15d">{{ t('exp15d') }}</option>
-            <option value="30d">{{ t('exp30d') }}</option>
-            <option value="90d">{{ t('exp90d') }}</option>
-            <option value="180d">{{ t('exp180d') }}</option>
-            <option value="365d">{{ t('exp365d') }}</option>
+            <option v-for="o in EXPIRY_OPTS" :key="o" :value="o">{{ t('exp' + o) }}</option>
           </select>
         </div>
 

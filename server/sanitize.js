@@ -52,10 +52,10 @@ export function sanitizePostHtml(html) {
         attribs.referrerpolicy = 'strict-origin-when-cross-origin'
         return { tagName, attribs }
       },
-      // div 仅放行编辑器固定使用的两个 class（video-embed / video-file），其余剔除，
+      // div 仅放行编辑器固定使用的 class（video-embed），其余剔除，
       // 防作者在正文伪造 .pw-card/.edit-link 等真实样式做 UI 钓鱼
       div: (tagName, attribs) => {
-        if (!['video-embed', 'video-file'].includes(attribs.class)) delete attribs.class
+        if (attribs.class !== 'video-embed') delete attribs.class
         return { tagName, attribs }
       },
       // 阅读页复选框一律禁用，不可交互

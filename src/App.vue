@@ -11,7 +11,7 @@ import { createPasteFilter } from './editor/paste.js'
 import { t, lang, blockedText, apiErrorText } from './i18n.js'
 import { toggleDark } from './theme.js'
 import { createPost, copyText, readPostForEdit, updatePost, deletePost } from './api.js'
-import { FOOTER_LINKS, SITE_NAME } from './config/site.js'
+import { FOOTER_LINKS, SITE_NAME, EXPIRY_OPTS } from './config/site.js'
 import Toolbar from './components/Toolbar.vue'
 import MediaDialog from './components/MediaDialog.vue'
 import PublishDialog from './components/PublishDialog.vue'
@@ -120,8 +120,6 @@ function fmtDate(ms) {
   const p = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
-
-const EXPIRY_OPTS = ['1h', '12h', '24h', '1d', '15d', '30d', '90d', '180d', '365d']
 
 // 标题/作者栏回车跳到下一栏；isComposing 时忽略（中文输入法选词的回车）
 function onTitleEnter(e) {

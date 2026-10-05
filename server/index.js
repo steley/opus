@@ -7,14 +7,14 @@
 import { readFileSync } from 'node:fs'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
-import { createApp } from './routes.js'
+import { createApp, purgeExpiredPosts } from './routes.js'
 import { createSqliteDb } from './db-sqlite.js'
 
 const dbPath = process.env.WRITE_DB || './opus.db'
 const db = createSqliteDb(dbPath)
 
 // 启动时清理一次过期文章（惰性删除之外的兜底；定期清理可配 systemd timer）
-await db.run('DELETE FROM posts WHERE expires_at IS NOT NULL AND expires_at <= ?', Date.now())
+await purgeExpiredPosts(db)
 
 const app = createApp(db, app => {
   // 编辑模式路由：返回前端壳并对爬虫声明 noindex
