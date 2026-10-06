@@ -18,6 +18,12 @@ database_id = "45cb75b1-103d-48d3-aa19-d9e353ace0f7"
 [triggers]
 crons = ["17 3 * * *"]
 
+# ...
+[observability]
+enabled = false
+head_sampling_rate = 1
+redact_query_string = false
+
 [observability.logs]
 enabled = true
 head_sampling_rate = 1
@@ -28,6 +34,10 @@ persist = true
 enabled = true
 head_sampling_rate = 1
 persist = true
+
+[observability.issues]
+enabled = true
+# ...
 
 # Edge Shield（发布人机验证；secret 用 npx wrangler secret put SHIELD_SECRET_KEY）
 [vars]
