@@ -24,17 +24,43 @@
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f1c17'/%3E%3Cpath d='M32 9c7.4 4.9 11.6 11.5 11.6 19 0 6.8-4.2 12.6-11.6 26-7.4-13.4-11.6-19.2-11.6-26C20.4 20.5 24.6 13.9 32 9Z' fill='%23f7f3ea'/%3E%3Ccircle cx='32' cy='28.5' r='3.6' fill='%231f1c17'/%3E%3Cpath d='M32 32.5V49.5' stroke='%231f1c17' stroke-width='2.8'/%3E%3C/svg%3E" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <title>Opus — Anonymous Publishing Platform. Write. Publish. Done.</title>
+    <script>
+      // 首屏骨架主题预置：JS 包加载前就定好明暗，避免暗色用户白闪（与 theme.js 同规则）
+      try {
+        var t = localStorage.getItem('opus-theme')
+        if (t ? t === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches)
+          document.documentElement.classList.add('dark')
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="app">
-      <footer class="footer">
-        <nav class="footer-links">
-          <a href="/about">About</a>
-          <a href="/terms">Terms</a>
-          <a href="/privacy">Privacy</a>
-        </nav>
-        <span class="copyright">© 2026 Opus</span>
-      </footer>
+      <!-- 首屏骨架：与 App.vue 结构/类名一致，Vue 挂载后无缝替换（footer 是 SEO 静态内链，保留） -->
+      <div class="page">
+        <header class="topbar">
+          <span class="brand">
+            <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 2.8c3.4 2.3 5.4 5.3 5.4 8.7 0 3.4-2 6.4-5.4 10.2-3.4-3.8-5.4-6.8-5.4-10.2 0-3.4 2-6.4 5.4-8.7Z" />
+              <circle cx="12" cy="10.6" r="1.7" />
+              <path d="M12 12.3v9.4" />
+            </svg>Opus</span>
+          <button class="ghost-btn" type="button" tabindex="-1">Publish</button>
+        </header>
+        <div class="toolbar" aria-hidden="true"><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span><span class="tbtn"></span></div>
+        <main class="paper">
+          <input class="title" placeholder="Title" readonly tabindex="-1" />
+          <input class="author" placeholder="Author" readonly tabindex="-1" />
+          <div class="editor-content"><div class="tiptap"></div></div>
+        </main>
+        <footer class="footer">
+          <nav class="footer-links">
+            <a href="/about">About</a>
+            <a href="/terms">Terms</a>
+            <a href="/privacy">Privacy</a>
+          </nav>
+          <span class="copyright">© 2026 Opus</span>
+        </footer>
+      </div>
     </div>
     <script type="module" src="/src/main.js"></script>
   </body>
