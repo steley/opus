@@ -1,8 +1,13 @@
 import { ref } from 'vue'
 
-/** UI 语言状态：zh / en，模块级单例，各组件直接 import 使用 */
+/** UI 语言状态：zh / en，模块级单例，各组件直接 import 使用。
+ * 优先级：用户手动切换记录 > 浏览器语言（zh 浏览器用中文，其他一律英文——含 Googlebot 的 en-US 渲染器，保证 SEO 标题为英文） */
 const saved = localStorage.getItem('opus-lang')
-export const lang = ref(saved === 'en' ? 'en' : 'zh')
+export const lang = ref(
+  saved === 'en' || saved === 'zh'
+    ? saved
+    : navigator.language?.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+)
 
 const messages = {
   zh: {
@@ -280,12 +285,14 @@ export function toggleLang() {
   localStorage.setItem('opus-lang', lang.value)
   // 同步 cookie，服务端渲染的页面（阅读页/文档页）跟随语言选择
   document.cookie = `opus-lang=${lang.value};max-age=31536000;path=/`
-  applyLang()
+  applyTitle()
 }
 
-export function applyLang() {
-  document.documentElement.lang = lang.value === 'zh' ? 'zh-CN' : 'en'
-  document.title = lang.value === 'zh' ? 'Opus — 落笔即发布' : 'Opus — Write. Publish. Done.'
+/** 标签页标题跟随语言。英文分支必须与 index.html 的静态 <title> 一致——Google 渲染后看到的就是它 */
+export function applyTitle() {
+  document.title = lang.value === 'zh'
+    ? 'Opus — 落笔即发布'
+    : 'Opus — Anonymous Publishing Platform. Write. Publish. Done.'
 }
 
-applyLang()
+applyTitle()
