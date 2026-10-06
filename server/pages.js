@@ -132,13 +132,21 @@ h2[id],h3[id]{scroll-margin-top:16px}
 
 const FAVICON = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231f1c17'/%3E%3Cpath d='M32 9c7.4 4.9 11.6 11.5 11.6 19 0 6.8-4.2 12.6-11.6 26-7.4-13.4-11.6-19.2-11.6-26C20.4 20.5 24.6 13.9 32 9Z' fill='%23f7f3ea'/%3E%3Ccircle cx='32' cy='28.5' r='3.6' fill='%231f1c17'/%3E%3Cpath d='M32 32.5V49.5' stroke='%231f1c17' stroke-width='2.8'/%3E%3C/svg%3E"
 
-// 语言切换：读 opus-lang cookie，切换 .t-zh/.t-en 的 hidden 与 html[lang]，无刷新。
+// 语言切换：opus-lang cookie 优先，无 cookie 时按浏览器语言（zh 浏览器→中文，其余含 Googlebot 的 en-US→英文），
+// 切换 .t-zh/.t-en 的 hidden、html[lang] 与标签页标题，无刷新。
 // 双语文案已在 HTML 内（dual()），页面字节与语言无关 → 可被浏览器/边缘缓存。
 const LANG_JS = `
 (function(){
-  function readLang(){ try{ var m=/(?:^|;\\s*)opus-lang=(zh|en)/.exec(document.cookie); return m?m[1]:'zh' }catch(e){ return 'zh' } }
+  function readLang(){
+    try{ var m=/(?:^|;\\s*)opus-lang=(zh|en)/.exec(document.cookie); if(m) return m[1];
+      if(navigator.language&&navigator.language.toLowerCase().indexOf('zh')===0) return 'zh';
+    }catch(e){}
+    return 'en'
+  }
   function apply(lang){
     document.documentElement.setAttribute('lang',lang);
+    var t=document.querySelector('title');
+    if(t&&t.dataset.titleZh) t.textContent=lang==='zh'?t.dataset.titleZh:t.dataset.titleEn;
     var zh=document.querySelectorAll('.t-zh'),en=document.querySelectorAll('.t-en'),i;
     for(i=0;i<zh.length;i++) zh[i].hidden=lang!=='zh';
     for(i=0;i<en.length;i++) en[i].hidden=lang!=='en';
@@ -157,20 +165,21 @@ const LANG_JS = `
   });
 })();`
 
-const pageShell = (title, body, { head = '' } = {}) => {
+const pageShell = (title, body, { head = '', titleZh = '' } = {}) => {
   const zh = TEXT.zh, en = TEXT.en
   const year = new Date().getFullYear()
   const footerLinks = FOOTER_LINKS
     .map(l => `<a href="${l.path}">${dual(escapeHtml(zh.labels?.[l.labelKey] ?? l.labelKey), escapeHtml(en.labels?.[l.labelKey] ?? l.labelKey))}</a>`)
     .join('\n    ')
+  const titleAttrs = titleZh ? ` data-title-zh="${escapeHtml(titleZh)}" data-title-en="${escapeHtml(title)}"` : ''
   return `<!doctype html>
-<html lang="zh">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="${FAVICON}">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<title>${escapeHtml(title)}</title>
+<title${titleAttrs}>${escapeHtml(title)}</title>
 <meta name="theme-color" content="#f7f3ea">
 <script>(function(){try{var t=localStorage.getItem('opus-theme');var d=t?t==='dark':(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches);if(d){document.documentElement.classList.add('dark');var m=document.querySelector('meta[name=theme-color]');if(m)m.content='#22262a'}}catch(e){}})();</script>
 ${head}
@@ -368,8 +377,9 @@ ${err}
 </form>
 </div>
 </main>`
-  return pageShell(zh.pwPageTitle, body, {
+  return pageShell(en.pwPageTitle, body, {
     head: '<meta name="robots" content="noindex, nofollow">',
+    titleZh: zh.pwPageTitle,
   })
 }
 
@@ -502,5 +512,5 @@ export function docPage(key) {
 </main>`
   const head = `<meta name="description" content="${escapeHtml(meta.desc)}">
 <link rel="canonical" href="https://${SITE_DOMAIN}${meta.path}">`
-  return pageShell(meta.title, body, { head })
+  return pageShell(meta.title, body, { head, titleZh: zh.title })
 }
